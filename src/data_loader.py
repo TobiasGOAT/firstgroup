@@ -1,5 +1,7 @@
 import pickle
 import os
+import matplotlib.pyplot as plt
+import numpy as np
 class DataLoader:
     def __init__(self):
         self.train, self.valid, self.test = self.load_data()
@@ -48,8 +50,28 @@ class DataLoader:
         print(f"Validation set: {info['valid'][0]} samples, Labels: {info['valid'][1]}")
         print(f"Test set: {info['test'][0]} samples, Labels: {info['test'][1]}")
         print(f"Unique labels in training set: {info['unique_labels']}")
-        print(f"Training data range: {info['data_range']}")
-
-if __name__ == "__main__":
-    loader = DataLoader()
-    loader.print_data_summary()
+        print(f"Training data range: {info['training_data_range']}")
+    
+    def draw_sample(self, data, labels, index=None):
+        """Draw a sample image from the dataset.
+        
+        Args:
+            data: Image data array (samples, height, width) or (samples, pixels)
+            labels: Label array
+            index: Index of image to draw (random if None)
+        """
+        if index is None:
+            index = np.random.randint(0, len(data))
+        
+        image = data[index]
+        label = labels[index]
+        
+        # Reshape if flattened (784 pixels -> 28x28)
+        if len(image.shape) == 1:
+            image = image.reshape(28, 28)
+        
+        plt.figure(figsize=(6, 6))
+        plt.imshow(image, cmap='gray')
+        plt.title(f'Label: {label}')
+        plt.axis('off')
+        plt.show()
