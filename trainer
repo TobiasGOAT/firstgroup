@@ -1,0 +1,37 @@
+import numpy as np
+
+class trainer
+    def __init__(self, data_list , batch_size, learning_rate , network , method )
+        #Inputs:
+        # data_list : list
+        # batch_size : integer
+        # learning_rate : float
+        # network : FNN
+        # method : string (SGD or Adams)
+        #
+        #Outputs:
+        # network : FNN
+        # Accuracy : Float
+
+
+    def SGD(network , activation_func)
+
+        #Inputs:
+        # network : FNN
+        # activation_func : function (need to be differentiable)
+        #Parameters:
+        # stopping_criteria 
+        # step_size
+        
+        nbrEdges = 
+        j_max = 
+
+        limit = 1e30
+        w_old = np.random.randfloat(np.random.uniform(-limit,limit)  for _ in range(nbrEdges))
+
+        for i in range(j_max)
+            #Choose a random data item from training data
+
+            
+            w_new = w_old - step_size*gradient
+
