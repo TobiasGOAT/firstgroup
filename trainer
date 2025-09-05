@@ -1,0 +1,25 @@
+class trainer
+    def __init__(self, data_list , batch_size, learning_rate , network , method )
+        #Inputs:
+        # data_list : list
+        # batch_size : integer
+        # learning_rate : float
+        # network : FNN
+        # method : string (SGD or Adams)
+        #
+        #Outputs:
+        # network : FNN
+        # Accuracy : Float
+
+
+    def SGD(network , activation_func)
+
+        #Inputs:
+        # network : FNN
+        # activation_func : function (need to be differentiable)
+        #Parameters:
+        # stopping_criteria 
+        # step_size
+        
+
+
