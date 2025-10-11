@@ -237,10 +237,6 @@ class OrchestratorDN:
 
 ---
 
-## 7) License / ownership
-
-Coursework code for the “Advanced Course in Numerical Algorithms with Python/SciPy”. Reuse within the group allowed; cite if used elsewhere.
-
 ---
 
 ### Appendix — Running from repo root
