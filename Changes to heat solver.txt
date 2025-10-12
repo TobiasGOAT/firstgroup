@@ -1,0 +1,4 @@
+Changes to heat solver: 
+1. The Laplacian matrix K is scaled before the bc so the Dirichlet values are set correctly. 
+2. K matrix is converted to CSR format after the BCs, which  makes the solver faster. 
+3. createRanges is cleaned up - look at the pics I send 
