@@ -1,5 +1,5 @@
 import numpy as np
-from heatSolverValia import heatSolver
+from heatSolver import heatSolver
 
 """
 -------------------------------------------------------------
@@ -23,7 +23,7 @@ What you need to know:
             "omega2": ["bottom"]      #window on bottom wall of room 2
         }
 
-     Valid side names: "left", "right", "top", "bottom"
+     Valid side names: "bottom", "left", "top", "right" 
      (type them exactly right — or the code will yell at you)
 
 2. Call the main function like this:
@@ -54,17 +54,21 @@ def uniform_list(val, n):   #inputs: the value you want to repeat and how many t
 def build_room_solvers(dx, heater_walls=None, window_walls=None):
     heater_walls = heater_walls or {}
     window_walls = window_walls or {}
+    normal_wall_temp = 15  #default wall temperature
+    heater_temp = 40      #temperature of heaters
+    window_temp = 5      #temperature of windows
 
     #Room sizes (Lx, Ly)
     L1 = (1.0, 1.0)
     L2 = (1.0, 2.0)
     L3 = (1.0, 1.0)
+    L4 = (0.5, 0.5)
 
     #Function to build the wall arrays for Dirichlet/Neumann
     def makeBCs(Lx, Ly, heater_sides, window_sides):
 
         #in case the user types mistakes
-        valid_sides = {"bottom", "top", "left", "right"}
+        valid_sides = {"bottom", "left", "top", "right"}
         groups_to_check = [
             ("heater_sides", heater_sides),
             ("window_sides", window_sides)
@@ -75,31 +79,31 @@ def build_room_solvers(dx, heater_walls=None, window_walls=None):
             for s in sides:
                 if s not in valid_sides:
                     raise ValueError(
-                        f"Be careful! You wrote jibrish in '{s}' under {group_name}. "
+                        f"Be careful! You wrote jibberish in '{s}' under {group_name}. "
                         f"Valid names are: {', '.join(sorted(valid_sides))}."
                     )
 
-        Nx = int(Lx / dx) + 1
-        Ny = int(Ly / dx) + 1
+        Nx = int(Lx / dx) + 1 #number of grid points in x direction
+        Ny = int(Ly / dx) + 1 #number of grid points in y direction
 
-        D_bottom = uniform_list(15, Nx) #we set the normal wall as the default value
-        D_left   = uniform_list(15, Ny)
-        D_top    = uniform_list(15, Nx)
-        D_right  = uniform_list(15, Ny)
+        D_bottom = uniform_list(normal_wall_temp, Nx) #we set the normal wall as the default value
+        D_left   = uniform_list(normal_wall_temp, Ny)
+        D_top    = uniform_list(normal_wall_temp, Nx)
+        D_right  = uniform_list(normal_wall_temp, Ny)
 
         #Apply window=5 and heater=40 overrides
         #window_sides is a list of strings that tells us which walls have windows
-        #heater_sides is a list of strings that tells us which walls haeve heaters
+        #heater_sides is a list of strings that tells us which walls have heaters
         for s in window_sides:
-            if   s == "bottom": D_bottom = uniform_list(5, Nx)
-            elif s == "left":   D_left   = uniform_list(5, Ny)
-            elif s == "top":    D_top    = uniform_list(5, Nx)
-            elif s == "right":  D_right  = uniform_list(5, Ny)
+            if   s == "bottom": D_bottom = uniform_list(window_temp, Nx)
+            elif s == "left":   D_left   = uniform_list(window_temp, Ny)
+            elif s == "top":    D_top    = uniform_list(window_temp, Nx)
+            elif s == "right":  D_right  = uniform_list(window_temp, Ny)
         for s in heater_sides:
-            if   s == "bottom": D_bottom = uniform_list(40, Nx)
-            elif s == "left":   D_left   = uniform_list(40, Ny)
-            elif s == "top":    D_top    = uniform_list(40, Nx)
-            elif s == "right":  D_right  = uniform_list(40, Ny)
+            if   s == "bottom": D_bottom = uniform_list(heater_temp, Nx)
+            elif s == "left":   D_left   = uniform_list(heater_temp, Ny)
+            elif s == "top":    D_top    = uniform_list(heater_temp, Nx)
+            elif s == "right":  D_right  = uniform_list(heater_temp, Ny)
 
         #Do not use uniform_list yet! Otherwise you set the flux to zero
         N_bottom = None
@@ -109,13 +113,14 @@ def build_room_solvers(dx, heater_walls=None, window_walls=None):
 
         return (D_bottom, D_left, D_top, D_right), (N_bottom, N_left, N_top, N_right), Nx, Ny
 
+    
+    rooms = {}
+
     #Room Ω1
     hot1 = set(heater_walls.get("omega1", []))
     win1 = set(window_walls.get("omega1", []))
     D1, N1, Nx1, Ny1 = makeBCs(*L1, hot1, win1)
-
-    rooms = {}
-
+    # heatSolver(dx,sides,dirichletBC,neumanBC)
     solver1 = heatSolver(dx, L1, D1, N1)
     rooms["omega1"] = {"solver": solver1, "Nx": Nx1, "Ny": Ny1}
 
@@ -132,6 +137,13 @@ def build_room_solvers(dx, heater_walls=None, window_walls=None):
     D3, N3, Nx3, Ny3 = makeBCs(*L3, hot3, win3)
     solver3 = heatSolver(dx, L3, D3, N3)
     rooms["omega3"] = {"solver": solver3, "Nx": Nx3, "Ny": Ny3}
+
+    #Room Ω4
+    hot4 = set(heater_walls.get("omega4", []))
+    win4 = set(window_walls.get("omega4", []))
+    D4, N4, Nx4, Ny4 = makeBCs(*L4, hot4, win4)
+    solver4 = heatSolver(dx, L4, D4, N4)
+    rooms["omega4"] = {"solver": solver4, "Nx": Nx4, "Ny": Ny4}
 
     #layout is a dictionary that describes hw the rooms connect
     layout = {

@@ -9,6 +9,7 @@ N_x = int(sides[0]/dx) + 1
 N_y = int(sides[1]/dx) + 1
 
 #The right side numbers are arbitrary and need to be form omeha 2
+# order is bottom, left, top, right
 dirichletBC = [[15 for _ in range(N_x)],[40 for _ in range(N_x)],[15 for _ in range(N_x)],None]
 neumanBC = [None,None,None,[5 for _ in range(N_x)]]
 
