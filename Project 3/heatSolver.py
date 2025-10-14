@@ -11,8 +11,6 @@ It builds a sparse matrix with the 5-point stencil,
 applies the boundary conditions, and solves A u = b to get
 the temperature at every grid point.
 ------------------------------------------------------------
-Coordinate picture (how we name the sides)
-------------------------------------------------------------
 y=Ly  ┌──────── top ────────┐
       │                     │
       │                     │
