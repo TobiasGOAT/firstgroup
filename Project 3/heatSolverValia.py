@@ -2,45 +2,43 @@ import numpy as np
 import scipy.sparse as sp
 
 """
-   A finite-difference solver for the steady-state 2D Laplace equation.
+------------------------------------------------------------
+READ ME FIRST
+------------------------------------------------------------
+A finite-difference solver for the 2D Laplace equation on a rectangle.
 
-   Parameters
-   ----------
-   dx : float
-       Grid spacing in both x and y directions. Defines the distance between
-       neighboring grid points and is used in all derivative approximations.
+It builds a sparse matrix with the 5-point stencil,
+applies the boundary conditions, and solves A u = b to get
+the temperature at every grid point.
+------------------------------------------------------------
+Coordinate picture (how we name the sides)
+------------------------------------------------------------
+y=Ly  ┌──────── top ────────┐
+      │                     │
+      │                     │
+left  │                     │  right
+x=0   │                     │  x=Lx
+      │                     │
+      └────── bottom ───────┘  y=0
 
-   sides : list or tuple of floats
-       [Lx, Ly] — the physical size of the rectangular domain in the x and y directions.
-       For example, if Lx = 1.0 and Ly = 0.5, the grid will cover 0 ≤ x ≤ 1.0
-       and 0 ≤ y ≤ 0.5.
+------------------------------------------------------------
+Parameters
+------------------------------------------------------------
+1. dx: float
+2. sides: [Lx, Ly]
+    Physical lengths. Grid sizes become:
+      Nx = int(Lx/dx) + 1
+      Ny = int(Ly/dx) + 1
+3. dirichletBC: [bottom, left, top, right]
+    Each entry is either:
+      - a list/array of values of length Nx (for bottom/top) or Ny (for left/right)
+      - or None if that side is not Dirichlet.
+4. neumanBC: [bottom, left, top, right]
+    Each entry is either:
+      - a list/array of flux values with the same lengths as above
+      - or None if that side is not Neumann.
+"""
 
-   dirichletBC : list of lists (or None)
-       [bottom, left, top, right] — values of the temperature `u` on the sides
-       where **Dirichlet boundary conditions** are applied (fixed temperature).
-       Each side is given as a list (or NumPy array) of values corresponding to
-       each grid point along that side. The list length must match the number
-       of grid points along that side (Nx or Ny). If a side has no Dirichlet
-       boundary, write `None`.
-
-   neumanBC : list of lists (or None)
-       [bottom, left, top, right] — values of the Neumann boundary conditions
-       (normal heat flux, ∂u/∂n) along each side. These describe the heat flow
-       across the boundary instead of the temperature value. Like `dirichletBC`,
-       each side is a list of flux values of the correct length, or `None` if
-       no Neumann boundary is applied.
-
-   Notes
-   -----
-   - The coordinate orientation is:
-       bottom → y = 0
-       top    → y = Ly
-       left   → x = 0
-       right  → x = Lx
-   - The sides must not overlap: use either Dirichlet or Neumann per side.
-   - Internally, the solver constructs a sparse matrix for the Laplacian using
-     a 5-point stencil and solves `A u = b` for the steady-state temperature field.
-   """
 
 class heatSolver:
 
