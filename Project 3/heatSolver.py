@@ -2,59 +2,19 @@ import numpy as np
 import scipy.sparse as sp
 
 """
-<<<<<<< HEAD
-   A finite-difference solver for the steady-state 2D Laplace equation.
-
-   Parameters
-   ----------
-   dx : float
-       Grid spacing in both x and y directions. Defines the distance between
-       neighboring grid points and is used in all derivative approximations.
-
-   sides : list or tuple of floats
-       [Lx, Ly] — the physical size of the rectangular domain in the x and y directions.
-       For example, if Lx = 1.0 and Ly = 0.5, the grid will cover 0 ≤ x ≤ 1.0
-       and 0 ≤ y ≤ 0.5.
-
-   dirichletBC : list of lists (or None)
-       [bottom, left, top, right] — values of the temperature `u` on the sides
-       where **Dirichlet boundary conditions** are applied (fixed temperature).
-       Each side is given as a list (or NumPy array) of values corresponding to
-       each grid point along that side. The list length must match the number
-       of grid points along that side (Nx or Ny). If a side has no Dirichlet
-       boundary, write `None`.
-
-   neumanBC : list of lists (or None)
-       [bottom, left, top, right] — values of the Neumann boundary conditions
-       (normal heat flux, ∂u/∂n) along each side. These describe the heat flow
-       across the boundary instead of the temperature value. Like `dirichletBC`,
-       each side is a list of flux values of the correct length, or `None` if
-       no Neumann boundary is applied.
-
-   Notes
-   -----
-   - The coordinate orientation is:
-       bottom → y = L_y
-       top    → y = 0
-       left   → x = 0
-       right  → x = L_x
-   - The sides must not overlap: use either Dirichlet or Neumann per side.
-   - Internally, the solver constructs a sparse matrix for the Laplacian using
-     a 5-point stencil and solves `A u = b` for the steady-state temperature field.
-   """
-=======
 ------------------------------------------------------------
-READ ME FIRST
+READ ME FIRST 
 ------------------------------------------------------------
-A finite-difference solver for the 2D Laplace equation on a rectangle.
+A finite-difference solver for the 2D Laplace equation
+on a rectangular room.
 
 It builds a sparse matrix with the 5-point stencil,
-applies the boundary conditions, and solves A u = b to get
-the temperature at every grid point.
-------------------------------------------------------------
+applies boundary conditions, and solves Au = b for the temperature.
+
+Coordinate picture:
 y=Ly  ┌──────── top ────────┐
       │                     │
-      │                     │
+      │         Ω           │
 left  │                     │  right
 x=0   │                     │  x=Lx
       │                     │
@@ -63,119 +23,168 @@ x=0   │                     │  x=Lx
 ------------------------------------------------------------
 Parameters
 ------------------------------------------------------------
-1. dx: float
-2. sides: [Lx, Ly]
-    Physical lengths. Grid sizes become:
-      Nx = int(Lx/dx) + 1
-      Ny = int(Ly/dx) + 1
-3. dirichletBC: [bottom, left, top, right]
-    Each entry is either:
-      - a list/array of values of length Nx (for bottom/top) or Ny (for left/right)
-      - or None if that side is not Dirichlet.
-4. neumanBC: [bottom, left, top, right]
-    Each entry is either:
-      - a list/array of flux values with the same lengths as above
-      - or None if that side is not Neumann.
+dx : float
+    Grid spacing is assumed to be the same in x and y axis.
+
+sides : [Lx, Ly]
+    Physical lengths of the rectangle. The grid sizes are:
+        Nx = int(Lx/dx) + 1
+        Ny = int(Ly/dx) + 1
+    The 1D flattened solution has length N = Nx * Ny.
+
+dirichletBC : [bottom, left, top, right]
+neumanBC    : [bottom, left, top, right]
+    Dirichlet values (temperatures) and Neumann fluxes (∂u/∂n) per side.
+    For each side, provide EITHER Dirichlet OR Neumann (not both).
+
+    Array lengths must match the number of nodes on each side:
+        - bottom/top length: Nx
+        - left/right length: Ny
+    Use None for a side you don't set for that BC type.
+
+-----------------------------------------------------------
+Returns from solve(dirElseNeu: bool)
+------------------------------------------------------------
+u : (Nx*Ny,) ndarray
+    Flattened temperature field (row-major; index = j*Nx + i).
+
+sideValues : list of 1D ndarrays (length 4, order: [bottom, left, top, right])
+    If dirElseNeu=True  → Dirichlet traces u on each side.
+    If dirElseNeu=False → Neumann traces (∂u/∂n) estimated by
+                           (u_inner - u_boundary)/dx  (aligned with outward normal).
+    Lengths are Nx for bottom/top and Ny for left/right.
 """
 
->>>>>>> f90da484808e64970a8ad884c1fed722957f44f3
-
 class heatSolver:
+    def __init__(self, dx, sides, dirichletBC, neumanBC):
+        """
+        sides      : [Lx, Ly]
+        dirichletBC: [bottom, left, top, right]
+        neumanBC   : [bottom, left, top, right]
+        """
+        #in case the user gives too small grid
+        self.dx = float(dx)
+        Lx, Ly = float(sides[0]), float(sides[1])
+        self.N_x = int(Lx / self.dx) + 1
+        self.N_y = int(Ly / self.dx) + 1
+        Nx, Ny = self.N_x, self.N_y
+        if Nx < 2 or Ny < 2:
+            raise ValueError("You messed up, the grid too small: need N_x >= 2 and N_y >= 2.")
 
-    def __init__(self,dx,sides,dirichletBC,neumanBC):
-        #Sides are [L_x,L_y]
-        #dirichletBC are [bottom,left,top,right]
-        #neumanBC are [bottom,left,top,right], write None if no neuman BC
-        #The values should be a list and must be N_x or N_y long respectively in order left to right or down to up
+        #Validate boundary-condition inputs
+        def _check_side(name, dir_arr, neu_arr, expected_len):
+            if dir_arr is not None and neu_arr is not None:
+                raise ValueError(f"{name}: cannot set both Dirichlet and Neumann.")
+            if dir_arr is not None and len(dir_arr) != expected_len:
+                raise ValueError(f"{name} Dirichlet length {len(dir_arr)} != expected {expected_len}.")
+            if neu_arr is not None and len(neu_arr) != expected_len:
+                raise ValueError(f"{name} Neumann length {len(neu_arr)} != expected {expected_len}.")
 
-        self.dx = dx
-        self.N_x = int(sides[0]/dx) + 1
-        self.N_y = int(sides[1]/dx) + 1
+        _check_side("bottom", dirichletBC[0], neumanBC[0], Nx)
+        _check_side("left",   dirichletBC[1], neumanBC[1], Ny)
+        _check_side("top",    dirichletBC[2], neumanBC[2], Nx)
+        _check_side("right",  dirichletBC[3], neumanBC[3], Ny)
 
-        #Construct K matrix (A in slides)
-        self.K_size = self.N_x*self.N_y
-        self._constructKMat()   #build Laplacian matrix
-        self.K = self.K / self.dx ** 2   #scale by 1/h^2
-        self._createRanges()   #find and store the indices of all boundary grid points and their neighbouring inner points
+        #Build Laplacian matrix A (scaled), and boundary index ranges
+        self.K_size = Nx * Ny
+        self._constructKMat()                 #unscaled 5-point stencil
+        self.K = self.K / (self.dx ** 2)      #scale by 1/h^2 (before BCs)
+        self._createRanges()                  #boundary & adjacent-inner indices
+        self.b = np.zeros((self.K_size,), dtype=float)   #Build RHS and apply boundary conditions
 
+        # Apply BCs per side in order: [bottom, left, top, right]
+        self._applyBC(dirichletBC[0], neumanBC[0], self.ranges[0][0])   #bottom
+        self._applyBC(dirichletBC[1], neumanBC[1], self.ranges[0][1])   #left
+        self._applyBC(dirichletBC[2], neumanBC[2], self.ranges[0][2])   #top
+        self._applyBC(dirichletBC[3], neumanBC[3], self.ranges[0][3])   #right
 
-        #Construct b (Au=b)
-        self.b = sp.lil_matrix((self.K_size,1))
+        self.K = self.K.tocsr()
 
-        self._applyBC(dirichletBC[0],neumanBC[0],self.ranges[0][0])   #Bottom
-        self._applyBC(dirichletBC[1],neumanBC[1],self.ranges[0][1])   #left
-        self._applyBC(dirichletBC[2],neumanBC[2],self.ranges[0][2])   #top
-        self._applyBC(dirichletBC[3],neumanBC[3],self.ranges[0][3])   #right
-        self.K = self.K.tocsr()   #convert to CSR
+    # ------------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------------ #
+    def _constructKMat(self):
+        """Unscaled 5-point Laplacian in LIL format (row-major flattening)."""
+        main = -4.0 * np.ones(self.K_size)
+        lr = np.ones(self.K_size - 1)
+        # prevent wrap-around between rows for left/right neighbors
+        lr[np.arange(1, self.N_y) * self.N_x - 1] = 0.0
+        ud = np.ones(self.K_size - self.N_x)
+        self.K = sp.diags(
+            diagonals=[main, lr, lr, ud, ud],
+            offsets=[0, 1, -1, self.N_x, -self.N_x],
+            format='lil'
+        )
 
     def _createRanges(self):
-        #In case the grids are too small
-        if self.N_x < 2 or self.N_y < 2:
-            raise ValueError("You messed up. You need N_x >= 2 and N_y >= 2 to define inner nodes.")
-
-        #We map 2D grid indices (i,j) to 1D "flat" index k using row-major order: k = j*N_x + i
         Nx, Ny = self.N_x, self.N_y
-        N = self.K_size  #=Nx * Ny
+        N = self.K_size
 
-        #Boundary Indices
+        #boundary indices
         bottom = np.arange(0, Nx)
-        left = np.arange(0, N, Nx)
-        top = np.arange(N - Nx, N)
-        right = np.arange(Nx - 1, N, Nx)
+        left   = np.arange(0, N, Nx)
+        top    = np.arange(N - Nx, N)
+        right  = np.arange(Nx - 1, N, Nx)
 
-        #Inner indices
+        #adjacent inner indices (one step inward)
         bottom_in = bottom + Nx
-        left_in = left + 1
-        top_in = top - Nx
-        right_in = right - 1
+        left_in   = left + 1
+        top_in    = top - Nx
+        right_in  = right - 1
 
-        #store as both ordered lists and a named dict (pick one style if you prefer)
         self.ranges = [
             [bottom, left, top, right],
             [bottom_in, left_in, top_in, right_in]
         ]
         self.range_map = {
             "bottom": (bottom, bottom_in),
-            "left": (left, left_in),
-            "top": (top, top_in),
-            "right": (right, right_in),
+            "left":   (left,   left_in),
+            "top":    (top,    top_in),
+            "right":  (right,  right_in),
         }
 
-    def _constructKMat(self):
-        main = -4 * np.ones(self.K_size)
-        LeftNRight = np.ones(self.K_size-1)
-        LeftNRight[np.arange(1, self.N_y)*self.N_x - 1] = 0  # remove wrap-around
-        UpNDown = np.ones(self.K_size - self.N_x)
-        self.K = sp.diags([main, LeftNRight, LeftNRight, UpNDown, UpNDown], [0, 1, -1, self.N_x, -self.N_x], format='lil')
-
-    def _applyBC(self,DBCList,NBCList,itterations):
-        #Neuman
-        list_index = 0
+    def _applyBC(self, DBCList, NBCList, boundary_indices):
+        #Neumann first (only if provided)
         if NBCList is not None:
-            for i in itterations:
-                self.K[i,i] += 1    
-                self.b[i,0] += -NBCList[list_index]/self.dx
-                list_index += 1
-        # Dirichlet
-        list_index = 0
+            for i, g in zip(boundary_indices, NBCList):
+                self.K[i, i] += 1.0 / (self.dx ** 2)
+                self.b[i]    += -float(g) / self.dx
+
+        #Dirichlet overwrites (only if provided)
         if DBCList is not None:
-            for i in itterations:
-                self.K[i, :] = 0
-                self.K[i, i] = 1
-                self.b[i, 0] = DBCList[list_index]  # <- change here
-                list_index += 1
+            for i, val in zip(boundary_indices, DBCList):
+                self.K.rows[i] = [i]         #efficient in LIL: set row to single entry
+                self.K.data[i] = [1.0]
+                self.b[i]      = float(val)
 
-    def solve(self,dirElseNeu):
-        #Gives value on boundaries in order bottom,left,top,right
-        #dirElseNeu is if output should be dirichlet or neuman as boolean
-        sol =sp.linalg.spsolve(self.K,self.b)
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+    def solve(self, dirElseNeu: bool):
+        """
+        Solve A u = b.
+
+        Parameters
+        ----------
+        dirElseNeu : bool
+            True  → return Dirichlet traces u on [bottom, left, top, right]
+            False → return Neumann traces (∂u/∂n) as (u_inner - u_bd)/dx
+
+        Returns
+        -------
+        u : (N_x*N_y,) ndarray
+        sideValues : list of 1D ndarrays (order: [bottom, left, top, right])
+        """
+        u = sp.linalg.spsolve(self.K, self.b).ravel()
+
         sideValues = []
-
         if dirElseNeu:
-            for i in range(0,4):
-                sideValues.append(sol[self.ranges[0][i]])
+            for s in range(4):           #Dirichlet traces (values on the boundary)
+                sideValues.append(u[self.ranges[0][s]])
         else:
-            for i in range(0,4):
-                sideValues.append((sol[self.ranges[1][i]] - sol[self.ranges[0][i]])/self.dx)
+            for s in range(4):    #Neumann traces: first-order difference consistent with outward normals
+                u_bd = u[self.ranges[0][s]]
+                u_in = u[self.ranges[1][s]]
+                sideValues.append((u_in - u_bd) / self.dx)
 
-        return sol,sideValues
+        return u, sideValues
