@@ -2,6 +2,7 @@ import numpy as np
 import scipy.sparse as sp
 
 """
+<<<<<<< HEAD
    A finite-difference solver for the steady-state 2D Laplace equation.
 
    Parameters
@@ -41,6 +42,43 @@ import scipy.sparse as sp
    - Internally, the solver constructs a sparse matrix for the Laplacian using
      a 5-point stencil and solves `A u = b` for the steady-state temperature field.
    """
+=======
+------------------------------------------------------------
+READ ME FIRST
+------------------------------------------------------------
+A finite-difference solver for the 2D Laplace equation on a rectangle.
+
+It builds a sparse matrix with the 5-point stencil,
+applies the boundary conditions, and solves A u = b to get
+the temperature at every grid point.
+------------------------------------------------------------
+y=Ly  ┌──────── top ────────┐
+      │                     │
+      │                     │
+left  │                     │  right
+x=0   │                     │  x=Lx
+      │                     │
+      └────── bottom ───────┘  y=0
+
+------------------------------------------------------------
+Parameters
+------------------------------------------------------------
+1. dx: float
+2. sides: [Lx, Ly]
+    Physical lengths. Grid sizes become:
+      Nx = int(Lx/dx) + 1
+      Ny = int(Ly/dx) + 1
+3. dirichletBC: [bottom, left, top, right]
+    Each entry is either:
+      - a list/array of values of length Nx (for bottom/top) or Ny (for left/right)
+      - or None if that side is not Dirichlet.
+4. neumanBC: [bottom, left, top, right]
+    Each entry is either:
+      - a list/array of flux values with the same lengths as above
+      - or None if that side is not Neumann.
+"""
+
+>>>>>>> f90da484808e64970a8ad884c1fed722957f44f3
 
 class heatSolver:
 
