@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.sparse as sp
 
+#not the one we use anymore
+
 class heatSolver:
     #Assumes rectangel parralel to axis
     #Also has boundary nodes
