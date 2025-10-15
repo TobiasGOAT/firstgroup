@@ -282,7 +282,7 @@ class Room:
             if dirichlet_inner_wall:
                 self.D[Room.walls_order[side]] = neighbor_values
             else:
-                self.N[Room.walls_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
+                self.N[Room.walls_order[side]] = (np.array(neighbor_values) - np.array(border_values)) / self.dx
 
         self.solver.updateBC(self.D, self.N)
 
