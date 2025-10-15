@@ -67,6 +67,9 @@ class heatSolver:
         Lx, Ly = float(sides[0]), float(sides[1])
         self.N_x = int(Lx / self.dx) + 1
         self.N_y = int(Ly / self.dx) + 1
+        self.dirichletBC = dirichletBC
+        self.neumanBC = neumanBC
+
         Nx, Ny = self.N_x, self.N_y
         if Nx < 2 or Ny < 2:
             raise ValueError("You messed up, the grid too small: need N_x >= 2 and N_y >= 2.")
@@ -171,8 +174,13 @@ class heatSolver:
 
         if dirichletBC == None:
             dirichletBC = self.dirichletBC
+        else:
+            self.dirichletBC = dirichletBC
         if neumanBC == None:
             neumanBC = self.neumanBC
+        else:
+            self.neumanBC = neumanBC
+
 
         self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
         self.K = self.K.tocsr()
