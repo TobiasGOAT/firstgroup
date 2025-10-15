@@ -1,5 +1,46 @@
 import numpy as np
 
+''' This is the way the axes for the coupling ("start") will be defined:
+                                                                  @                    
+                                                                  @@@@                
+           @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
+                                                                   @@@@@              
+                                                                  @@   
+   @      @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      @    
+  @@@     @@                                                             @@     @@@   
+ @@@@@    @@                                                             @@     @@@@  
+@@@@@@@   @@                                                             @@    @@@@@@ 
+@@ @@@@@  @@                                                             @@   @@ @@ @@
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      @@   
+                                                                  @                   
+                                                                  @@@@                
+           @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
+                                                                   @@@@@              
+                                                                  @@                  '''
+
+
 class room:
     '''
     A class to represent a room in the apartment.
@@ -17,46 +58,8 @@ class room:
     couplings : dict
         The neighboring rooms (e.g., {"omega2": {"side": "bottom", "start": 0}}).'''
 
-    ''' This is the way the axes for the coupling ("start") will be defined:
-                                                                    @                    
-                                                                    @@@@                
-            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
-                                                                    @@@@@              
-                                                                    @@   
 
-    @      @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      @    
-    @@@     @@                                                             @@     @@@   
-    @@@@@    @@                                                             @@     @@@@  
-    @@@@@@@   @@                                                             @@    @@@@@@ 
-    @@ @@@@@  @@                                                             @@   @@ @@ @@
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@                                                             @@      @@   
-    @@     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      @@   
-                                                                                        
-                                                                    @                   
-                                                                    @@@@                
-            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
-                                                                    @@@@@              
-                                                                    @@                  '''
+
 
     def __init__(self, name, dx, shape, heater_sides, window_sides, couplings, heater_temp=40, window_temp=5, normal_wall_temp=15):
         self.name = name
@@ -93,15 +96,15 @@ class room:
         self.N = self.Nx * self.Ny
 
         #Boundary Indices
-        top = np.arange(0, self.Nx)
-        left = np.arange(0, self.N, self.Nx)
-        bottom = np.arange(self.N - self.Nx, self.N)
-        right = np.arange(self.Nx - 1, self.N, self.Nx)
+        self.top = np.arange(0, self.Nx)
+        self.left = np.arange(0, self.N, self.Nx)
+        self.bottom = np.arange(self.N - self.Nx, self.N)
+        self.right = np.arange(self.Nx - 1, self.N, self.Nx)
 
-        D_bottom = np.full(self.Nx, self.normal_wall_temp) #we set the normal wall as the default value
-        D_left   = np.full(self.Ny, self.normal_wall_temp)
-        D_top    = np.full(self.Nx, self.normal_wall_temp)
-        D_right  = np.full(self.Ny, self.normal_wall_temp)
+        self.D_bottom = np.full(self.Nx, self.normal_wall_temp) #we set the normal wall as the default value
+        self.D_left   = np.full(self.Ny, self.normal_wall_temp)
+        self.D_top    = np.full(self.Nx, self.normal_wall_temp)
+        self.D_right  = np.full(self.Ny, self.normal_wall_temp)
 
         #Apply window=5 and heater=40 overrides
         #window_sides is a list of strings that tells us which walls have windows
@@ -118,10 +121,8 @@ class room:
             elif s == "right":  D_right  = np.full(self.Ny, self.heater_temp)
 
         #Do not use uniform_list yet! Otherwise you set the flux to zero
-        N_bottom = None
-        N_left   = None
-        N_top    = None
-        N_right  = None
-
-        return (D_bottom, D_left, D_top, D_right), (N_bottom, N_left, N_top, N_right), Nx, Ny
+        self.N_bottom = None
+        self.N_left   = None
+        self.N_top    = None
+        self.N_right  = None
 
