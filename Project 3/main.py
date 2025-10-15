@@ -2,22 +2,22 @@
 # ^above is necessary to make executable
 # use: chmod +x filename.py
 from geometry import Apartment
-import argparse
-parser = argparse.ArgumentParser(description="Program for solving the stationaty heat equation in two dimensions",
-                                 formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("-v", "--verbose", action="store_true",
-                    help="increase output verbosity")
-parser.add_argument("geometry",nargs="?", help="The geometry setting to be used. Alternatives: "
-                    "\n  'default' : Uses the default 3-room layout"
-                    "\n  'alternative' : Uses the alternative 4-room layout found in the appendix"
-                    "\n  'custom' : Lets user define a custom geometry (interactive, CLI)", default="default", const="default")
-parser.add_argument("-p", "--plot", action="store_true", help="plot the result")
-parser.add_argument("-c", "--credits", action="store_true", help="show credits and exit")
-parser.add_argument("-dx",help="define mesh sizing, defaults to 1/20:=0.05", default=1/20, type=float)
-args=parser.parse_args()
-if args.credits:
-    print("Program written by: \n-Johan Fritz\n-Tobias Ryden\n-Samuel Eriksson\n-Valia Diamantaki &\n-Vahid Faraji\nas an assignment in the course 'Adva...")
-    exit
-if args.geometry=="custom":
-    raise NotImplementedError("bruh")
-apartment=Apartment(args.geometry, args.dx)
+from cli_parser import get_args
+
+
+args = get_args()
+
+if args.dx == None:
+    dx = 1 / 20
+else:
+    dx = args.dx
+if args.verbose:
+    if args.dx == None:
+        print("No value for 'dx' supplied, defaulting to dx:=0.05")
+    else:
+        print(f"Running script with dx={dx}")
+    print(f"Apartment layout is set to '{args.geometry}'")
+
+apartment = Apartment(args.geometry, dx)
+if args.verbose:
+    print("Successfully created apartment layout")

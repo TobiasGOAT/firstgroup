@@ -17,3 +17,5 @@ class Apartment:
             self.rooms=[omega1, omega2, omega3]
         else:
             raise NotImplementedError("only default layout implemented")
+    def iterate(self):
+        return None #not implemented
