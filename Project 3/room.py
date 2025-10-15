@@ -105,7 +105,7 @@ class Room:
         self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
         self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
 
-        self._initialize_BCs(heater_sides, window_sides)
+        self._initialize_BCs(self.heater_sides, self.window_sides)
         
         self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
 
