@@ -87,34 +87,39 @@ class heatSolver:
 
         #Build Laplacian matrix A (scaled), and boundary index ranges
         self.K_size = Nx * Ny
-        self._constructKMat()                 #unscaled 5-point stencil
-        self.K = self.K / (self.dx ** 2)      #scale by 1/h^2 (before BCs)
         self._createRanges()                  #boundary & adjacent-inner indices
-        self.b = np.zeros((self.K_size,), dtype=float)   #Build RHS and apply boundary conditions
 
-        # Apply BCs per side in order: [bottom, left, top, right]
-        self._applyBC(dirichletBC[0], neumanBC[0], self.ranges[0][0])   #bottom
-        self._applyBC(dirichletBC[1], neumanBC[1], self.ranges[0][1])   #left
-        self._applyBC(dirichletBC[2], neumanBC[2], self.ranges[0][2])   #top
-        self._applyBC(dirichletBC[3], neumanBC[3], self.ranges[0][3])   #right
-
+        self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
+ 
         self.K = self.K.tocsr()
 
     # ------------------------------------------------------------------ #
     # Internals
     # ------------------------------------------------------------------ #
-    def _constructKMat(self):
+    def _construct(self,dirichletBC,neumanBC):
         """Unscaled 5-point Laplacian in LIL format (row-major flattening)."""
         main = -4.0 * np.ones(self.K_size)
         lr = np.ones(self.K_size - 1)
         # prevent wrap-around between rows for left/right neighbors
         lr[np.arange(1, self.N_y) * self.N_x - 1] = 0.0
         ud = np.ones(self.K_size - self.N_x)
-        self.K = sp.diags(
+        K = sp.diags(
             diagonals=[main, lr, lr, ud, ud],
             offsets=[0, 1, -1, self.N_x, -self.N_x],
             format='lil'
         )
+
+        K = K / (self.dx ** 2)      #scale by 1/h^2 (before BCs)
+
+        b = np.zeros((self.K_size,), dtype=float)   #Build RHS and apply boundary conditions
+
+        # Apply BCs per side in order: [bottom, left, top, right]
+        self._applyBC(K,b,dirichletBC[0], neumanBC[0], self.ranges[0][0])   #bottom
+        self._applyBC(K,b,dirichletBC[1], neumanBC[1], self.ranges[0][1])   #left
+        self._applyBC(K,b,dirichletBC[2], neumanBC[2], self.ranges[0][2])   #top
+        self._applyBC(K,b,dirichletBC[3], neumanBC[3], self.ranges[0][3])   #right
+
+        return K,b
 
     def _createRanges(self):
         Nx, Ny = self.N_x, self.N_y
@@ -143,23 +148,35 @@ class heatSolver:
             "right":  (right,  right_in),
         }
 
-    def _applyBC(self, DBCList, NBCList, boundary_indices):
+    def _applyBC(self, K, b, DBCList, NBCList, boundary_indices):
         #Neumann first (only if provided)
         if NBCList is not None:
             for i, g in zip(boundary_indices, NBCList):
-                self.K[i, i] += 1.0 / (self.dx ** 2)
-                self.b[i]    += -float(g) / self.dx
+                K[i, i] += 1.0 / (self.dx ** 2)
+                b[i]    += -float(g) / self.dx
 
         #Dirichlet overwrites (only if provided)
         if DBCList is not None:
             for i, val in zip(boundary_indices, DBCList):
-                self.K.rows[i] = [i]         #efficient in LIL: set row to single entry
-                self.K.data[i] = [1.0]
-                self.b[i]      = float(val)
+                K.rows[i] = [i]         #efficient in LIL: set row to single entry
+                K.data[i] = [1.0]
+                b[i]      = float(val)
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
+
+    def uppdateBC(self,dirichletBC,neumanBC):
+        #If DBC or NBC should not be uppdated, set them as None
+
+        if dirichletBC == None:
+            dirichletBC = self.dirichletBC
+        if neumanBC == None:
+            neumanBC = self.neumanBC
+
+        self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
+        self.K = self.K.tocsr()
+
     def solve(self, dirElseNeu: bool):
         """
         Solve A u = b.
