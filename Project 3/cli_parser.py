@@ -1,4 +1,6 @@
 import argparse
+from cli_helpers import *
+import sys
 
 
 def get_args():
@@ -29,6 +31,15 @@ def get_args():
         help="define mesh sizing, defaults to 1/20:=0.05",
         default=None,
         type=float,
+        metavar=""
+    )
+    parser.add_argument(
+        "-i",
+        "--iterations",
+        default=10,
+        type=int,
+        help="number of iterations when solving, defaults to 10",
+        metavar=""
     )
 
     args = parser.parse_args()
@@ -42,9 +53,18 @@ def get_args():
         ]
         print("Program written by:")
         for a in authors:
-            print(f"    -{a}")
+            print(f"    -{bold(a)}")
         print("as a project in the course")
         print("    'Advanced Course in Numerical Algorithms with Python/SciPy'")
         print("at Lund University")
-        exit
+        sys.exit(0)
+
+    if args.dx == None:
+        print(bold("No value for 'dx' supplied, defaulting to dx:=0.05"))
+        args.dx = 1 / 20
+    elif args.verbose:
+        print(f"Running script with dx={args.dx}")
     return args
+
+
+args = get_args()
