@@ -205,6 +205,9 @@ class Room:
         # Adjust BC to Neumann for the coupled side
         full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
         self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
+        self.D[Room.walls_order[coupling["side"]]] = None  # Remove Dirichlet BC for this side
+
+        self.solver.updateBC(self.D, self.N)
 
         self.neighbors.append(coupling)
 
