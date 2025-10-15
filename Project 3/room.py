@@ -42,7 +42,7 @@ import heatSolver
                                                                   @@                  '''
 
 
-class room:
+class Room:
     rooms_order = {"bottom": 0, "left": 1, "top": 2, "right": 3}
     '''
     A class to represent a room in the apartment.
@@ -105,7 +105,7 @@ class room:
         self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
         self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
 
-        self.initialize_BCs(*shape, heater_sides, window_sides)
+        self._initialize_BCs(*shape, heater_sides, window_sides)
         
         self.solver = heatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
 
@@ -119,7 +119,7 @@ class room:
         }
         return opposites.get(side, None)
     
-    def initialize_BCs(self, heater_sides, window_sides):
+    def _initialize_BCs(self, heater_sides, window_sides):
         #in case the user types mistakes
         valid_sides = {"bottom", "left", "top", "right"}
         groups_to_check = [
@@ -161,12 +161,6 @@ class room:
             elif s == "top":    self.D[2] = np.full(self.Nx, self.heater_temp)
             elif s == "right":  self.D[3] = np.full(self.Ny, self.heater_temp)
 
-        #Do not use uniform_list yet! Otherwise you set the flux to zero
-        self.N[0] = None
-        self.N[1] = None
-        self.N[2] = None
-        self.N[3] = None
-
     def add_coupling(self, coupling):
         """
         Adds a coupling between this room and a neighboring room.
@@ -175,7 +169,7 @@ class room:
         coupling : dict
             A dictionary specifying the coupling details. Must contain the following keys:
             - "neighbor": An instance of the neighboring room (must be of type `room`).
-            - "side": A string indicating which side of the current room is coupled ("bottom", "left", "top", "right").
+            - "side": A string indicating which side of the CURRENT room is coupled ("bottom", "left", "top", "right").
             - "start": Length of the start along the specified side from NEIGHBOR's perspective.
             - "end": Length of the end along the specified side from NEIGHBOR's perspective.
 
@@ -198,8 +192,8 @@ class room:
         check_keys = {"neighbor", "side", "start", "end"}
         if not isinstance(coupling, dict) or set(coupling.keys()) != check_keys:
             raise ValueError(f"Coupling must be a dictionary with keys: {', '.join(sorted(check_keys))}.")
-        if not isinstance(coupling["neighbor"], room):
-            raise ValueError("The 'neighbor' must be an instance of the room class.")
+        if not isinstance(coupling["neighbor"], Room):
+            raise ValueError("The 'neighbor' must be an instance of the Room class.")
         if coupling["side"] not in {"bottom", "left", "top", "right"}:
             raise ValueError("The 'side' must be one of: bottom, left, top, right.")
         if not isinstance(coupling["start"], int) or coupling["start"] < 0:
@@ -228,7 +222,13 @@ class room:
             raise ValueError(f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}.")
 
         return [self.u[i] for i in self.side_to_indices[side][start:end]]
-    
+
+    def give_my_border_start_and_end(self, room) -> tuple:
+        if room not in self.couplings:
+            raise ValueError("The specified room is not a neighbor.")
+        coupling = self.couplings[room]
+        return coupling["start"], coupling["end"]
+
     def iterate_room(self):
         '''Update the room's temperature distribution.'''
         #Update boundary conditions from neighbors
@@ -246,8 +246,8 @@ class room:
             if neighbor_values is None:
                 continue  # Skip if no values are returned
 
-            # get the values for the neighboring room
-            border_values = [self.u[i] for i in self.side_to_indices[side][start:end]]
+            # get the values from this room
+            border_values = [self.u[i] for i in self.side_to_indices[side][*neighbor.give_my_border_start_and_end(self)]]
             # Update the Neumann BC for this side based on the neighbor's values
             self.N[self.rooms_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
         
@@ -256,9 +256,9 @@ class room:
         self.u = self.solver.solve(True)
 
 if __name__ == "__main__":
-    omega1 = room(0.1, (1.0, 1.0), heater_sides=["left"])
-    omega2 = room(0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
-    omega3 = room(0.1, (1.0, 1.0), window_sides=["right"])
+    omega1 = Room(0.1, (1.0, 1.0), heater_sides=["left"])
+    omega2 = Room(0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
+    omega3 = Room(0.1, (1.0, 1.0), window_sides=["right"])
 
     omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0, "end": 1.0})
     omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0, "end": 1.0})
