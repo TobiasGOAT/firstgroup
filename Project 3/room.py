@@ -1,5 +1,5 @@
 import numpy as np
-import heatSolver
+from heatSolver import HeatSolver
 
 ''' This is the way the axes for the coupling ("start" and "end") will be defined:
                                                                   @                    
@@ -87,27 +87,27 @@ class Room:
             Update the room's temperature distribution.
     '''
 
-    def __init__(self, dx, shape, heater_sides=[], window_sides=[], heater_temp=40, window_temp=5, normal_wall_temp=15):
+    def __init__(self, dx, shape, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
         self.dx = dx
         self.Lx, self.Ly = shape
         self.Nx = int(self.Lx / self.dx) + 1 #number of grid points in x direction
         self.Ny = int(self.Ly / self.dx) + 1 #number of grid points in y direction
-        self.N = self.Nx * self.Ny
-        self.heater_sides = heater_sides
-        self.window_sides = window_sides
+        self.N_tot = self.Nx * self.Ny
+        self.heater_sides = heater_sides or []
+        self.window_sides = window_sides or []
         self.heater_temp = heater_temp
         self.window_temp = window_temp
         self.normal_wall_temp = normal_wall_temp
         self.side_to_indices = {}
         self.neighbors = []  # List to store neighboring room couplings 
         self.couplings = {}  # Dictionary to store coupling details by neighbor name
-        self.u = np.zeros(self.N)  # Initialize temperature array
+        self.u = np.zeros(self.N_tot)  # Initialize temperature array
         self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
         self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
 
-        self._initialize_BCs(*shape, heater_sides, window_sides)
+        self._initialize_BCs(heater_sides, window_sides)
         
-        self.solver = heatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
+        self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
 
 
     def _opposite_side(self, side):
@@ -138,9 +138,9 @@ class Room:
 
         #Boundary Indices
         self.side_to_indices["bottom"] = np.arange(0, self.Nx)
-        self.side_to_indices["left"] = np.arange(0, self.N, self.Nx)
-        self.side_to_indices["top"] = np.arange(self.N - self.Nx, self.N)
-        self.side_to_indices["right"] = np.arange(self.Nx - 1, self.N, self.Nx)
+        self.side_to_indices["left"] = np.arange(0, self.N_tot, self.Nx)
+        self.side_to_indices["top"] = np.arange(self.N_tot - self.Nx, self.N_tot)
+        self.side_to_indices["right"] = np.arange(self.Nx - 1, self.N_tot, self.Nx)
 
         self.D[0] = np.full(self.Nx, self.normal_wall_temp) #we set the normal wall as the default value
         self.D[1] = np.full(self.Ny, self.normal_wall_temp)
@@ -196,9 +196,9 @@ class Room:
             raise ValueError("The 'neighbor' must be an instance of the Room class.")
         if coupling["side"] not in {"bottom", "left", "top", "right"}:
             raise ValueError("The 'side' must be one of: bottom, left, top, right.")
-        if not isinstance(coupling["start"], int) or coupling["start"] < 0:
+        if not isinstance(coupling["start"], float) or coupling["start"] < 0:
             raise ValueError("The 'start' must be a non-negative integer.")
-        if "end" in coupling and (not isinstance(coupling["end"], int) or coupling["end"] <= coupling["start"]):
+        if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
             raise ValueError("The 'end' must be an integer greater than 'start'.")
         self.neighbors.append(coupling)
 
@@ -221,12 +221,12 @@ class Room:
         if side not in valid_sides:
             raise ValueError(f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}.")
 
-        return [self.u[i] for i in self.side_to_indices[side][start:end]]
+        return np.array(self.u[i] for i in self.side_to_indices[side][start:end])
 
     def give_my_border_start_and_end(self, room) -> tuple:
-        if room not in self.couplings:
+        if room not in self.neighbors:
             raise ValueError("The specified room is not a neighbor.")
-        coupling = self.couplings[room]
+        coupling = self.neighbors[room]
         return coupling["start"], coupling["end"]
 
     def iterate_room(self):
@@ -247,7 +247,8 @@ class Room:
                 continue  # Skip if no values are returned
 
             # get the values from this room
-            border_values = [self.u[i] for i in self.side_to_indices[side][*neighbor.give_my_border_start_and_end(self)]]
+            start_idx, end_idx = neighbor.give_my_border_start_and_end(self)
+            border_values = [self.u[i] for i in self.side_to_indices[side][start_idx:end_idx]]
             # Update the Neumann BC for this side based on the neighbor's values
             self.N[self.rooms_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
         

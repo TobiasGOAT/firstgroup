@@ -55,7 +55,7 @@ sideValues : list of 1D ndarrays (length 4, order: [bottom, left, top, right])
     Lengths are Nx for bottom/top and Ny for left/right.
 """
 
-class heatSolver:
+class HeatSolver:
     def __init__(self, dx, sides, dirichletBC, neumanBC):
         """
         sides      : [Lx, Ly]
