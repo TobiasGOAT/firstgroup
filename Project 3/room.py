@@ -87,8 +87,9 @@ class Room:
             Update the room's temperature distribution.
     '''
 
-    def __init__(self, aname, dx, shape, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
+    def __init__(self, aname, dx, shape, relaxation = 0.8, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
         self.aname = aname
+        self.relaxation = relaxation
         self.dx = dx
         self.Lx, self.Ly = shape
         self.Nx = int(self.Lx / self.dx) + 1 #number of grid points in x direction
@@ -103,6 +104,7 @@ class Room:
         self.neighbors = []  # List to store neighboring room couplings 
         self.couplings = {}  # Dictionary to store coupling details by neighbor name
         self.u = np.zeros(self.N_tot)  # Initialize temperature array
+        self.new_u = np.zeros(self.N_tot)  # For relaxation
         self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
         self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
 
@@ -255,7 +257,7 @@ class Room:
             raise ValueError("The specified room is not a neighbor.")
         return my_start, my_end
 
-    def iterate_room(self):
+    def iterate_room(self, dirichlet_inner_wall=False):
         '''Update the room's temperature distribution.'''
         #Update boundary conditions from neighbors
         for coupling in self.neighbors:
@@ -277,11 +279,15 @@ class Room:
 
             border_values = self.get_boundary_value(side, my_start, my_end)
             # Update the Neumann BC for this side based on the neighbor's values
-            self.N[Room.walls_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
-        
-        self.solver.updateBC(None, self.N)
+            if dirichlet_inner_wall:
+                self.D[Room.walls_order[side]] = neighbor_values
+            else:
+                self.N[Room.walls_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
 
-        self.u, _ = self.solver.solve(True)
+        self.solver.updateBC(self.D, self.N)
+
+        self.new_u, _ = self.solver.solve(True)
+        self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
 
 if __name__ == "__main__":
     omega1 = Room("Omega 1", 0.1, (1.0, 1.0), heater_sides=["left"])
@@ -294,9 +300,9 @@ if __name__ == "__main__":
     omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0})
 
     for _ in range(10):
-        omega1.iterate_room()
-        omega2.iterate_room()
-        omega3.iterate_room()
+        omega1.iterate_room(dirichlet_inner_wall=True)
+        omega3.iterate_room(dirichlet_inner_wall=True)
+        omega2.iterate_room(dirichlet_inner_wall=False)
 
     print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
     print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
