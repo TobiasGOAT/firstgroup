@@ -43,7 +43,7 @@ from heatSolver import HeatSolver
 
 
 class Room:
-    rooms_order = {"bottom": 0, "left": 1, "top": 2, "right": 3}
+    walls_order = {"bottom": 0, "left": 1, "top": 2, "right": 3}
     '''
     A class to represent a room in the apartment.
     
@@ -87,7 +87,8 @@ class Room:
             Update the room's temperature distribution.
     '''
 
-    def __init__(self, dx, shape, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
+    def __init__(self, aname, dx, shape, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
+        self.aname = aname
         self.dx = dx
         self.Lx, self.Ly = shape
         self.Nx = int(self.Lx / self.dx) + 1 #number of grid points in x direction
@@ -169,9 +170,9 @@ class Room:
         coupling : dict
             A dictionary specifying the coupling details. Must contain the following keys:
             - "neighbor": An instance of the neighboring room (must be of type `room`).
-            - "side": A string indicating which side of the CURRENT room is coupled ("bottom", "left", "top", "right").
-            - "start": Length of the start along the specified side from NEIGHBOR's perspective.
-            - "end": Length of the end along the specified side from NEIGHBOR's perspective.
+            - "side": A string indicating which side of the NEIGHBOR room is coupled compared to THIS room ("bottom", "left", "top", "right").
+            - "start": Length of the start along the specified side from THIS room's perspective.
+            - "end": Length of the end along the specified side from THIS room's perspective.
 
 
         Raises
@@ -184,8 +185,8 @@ class Room:
         >>> coupling = {
         ...     "neighbor": room_instance,
         ...     "side": "left",
-        ...     "start": 0,
-        ...     "end": 5
+        ...     "start": 0.0,
+        ...     "end": 5.0
         ... }
         >>> room.add_coupling(coupling)
         """
@@ -200,6 +201,11 @@ class Room:
             raise ValueError("The 'start' must be a non-negative float.")
         if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
             raise ValueError("The 'end' must be a float greater than 'start'.")
+        
+        # Adjust BC to Neumann for the coupled side
+        full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
+        self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
+
         self.neighbors.append(coupling)
 
     def get_boundary_value(self, side, start, end):
@@ -221,13 +227,30 @@ class Room:
         if side not in valid_sides:
             raise ValueError(f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}.")
 
-        return np.array(self.u[i] for i in self.side_to_indices[side][start:end])
+        
 
-    def give_my_border_start_and_end(self, room) -> tuple:
-        if room not in self.neighbors:
+        full_boundary = self.side_to_indices[side]
+        full_length = self.Lx if side in {"bottom", "top"} else self.Ly
+        n = len(full_boundary)
+
+        x = np.linspace(0, full_length, n)
+
+        mask = (x >= start) & (x <= end)
+
+        selected_indices = full_boundary[mask]
+
+        return np.array([self.u[i] for i in selected_indices])
+
+    def give_border_start_and_end(self, room) -> tuple:
+        my_start = my_end = None
+        for coupling in self.neighbors:
+            if coupling["neighbor"] == room:
+                my_start = coupling["start"]
+                my_end = coupling["end"]
+                break
+        if my_start is None or my_end is None:
             raise ValueError("The specified room is not a neighbor.")
-        coupling = self.neighbors[room]
-        return coupling["start"], coupling["end"]
+        return my_start, my_end
 
     def iterate_room(self):
         '''Update the room's temperature distribution.'''
@@ -235,33 +258,59 @@ class Room:
         for coupling in self.neighbors:
             neighbor = coupling["neighbor"]
             side = coupling["side"]
-            start = coupling["start"]
-            end = coupling.get("end")
+            my_start = coupling["start"]
+            my_end = coupling.get("end")
+            their_start, their_end = neighbor.give_border_start_and_end(self)
+
+
 
             # Get the boundary values from the neighboring room
             neighbor_values = neighbor.get_boundary_value(
-                self._opposite_side(side), start, end
+                self._opposite_side(side), their_start, their_end
             )
 
             if neighbor_values is None:
                 continue  # Skip if no values are returned
 
-            # get the values from this room
-            start_idx, end_idx = neighbor.give_my_border_start_and_end(self)
-            border_values = [self.u[i] for i in self.side_to_indices[side][start_idx:end_idx]]
+            border_values = self.get_boundary_value(side, my_start, my_end)
             # Update the Neumann BC for this side based on the neighbor's values
-            self.N[self.rooms_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
+            self.N[Room.walls_order[side]] = (np.array(border_values) - np.array(neighbor_values)) / self.dx
         
-        self.solver.update_BCs(None, self.N)
+        self.solver.updateBC(None, self.N)
 
-        self.u = self.solver.solve(True)
+        self.u, _ = self.solver.solve(True)
 
 if __name__ == "__main__":
-    omega1 = Room(0.1, (1.0, 1.0), heater_sides=["left"])
-    omega2 = Room(0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
-    omega3 = Room(0.1, (1.0, 1.0), window_sides=["right"])
+    omega1 = Room("Omega 1", 0.1, (1.0, 1.0), heater_sides=["left"])
+    omega2 = Room("Omega 2", 0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
+    omega3 = Room("Omega 3", 0.1, (1.0, 1.0), window_sides=["right"])
 
-    omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0, "end": 1.0})
-    omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0, "end": 1.0})
+    omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0})
+    omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0})
     omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0})
-    omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0, "end": 1.0})
+    omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0})
+
+    for _ in range(10):
+        omega1.iterate_room()
+        omega2.iterate_room()
+        omega3.iterate_room()
+
+    print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
+    print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
+    print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
+
+    #plotting
+    import matplotlib.pyplot as plt
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    im1 = axs[0].imshow(omega1.u.reshape((omega1.Ny, omega1.Nx)), cmap='hot', origin='lower', extent=[0, omega1.Lx, 0, omega1.Ly])
+    axs[0].set_title('Room 1 Temperature Distribution')
+    fig.colorbar(im1, ax=axs[0])
+    im2 = axs[1].imshow(omega2.u.reshape((omega2.Ny, omega2.Nx)), cmap='hot', origin='lower', extent=[0, omega2.Lx, 0, omega2.Ly])
+    axs[1].set_title('Room 2 Temperature Distribution')
+    fig.colorbar(im2, ax=axs[1])
+    im3 = axs[2].imshow(omega3.u.reshape((omega3.Ny, omega3.Nx)), cmap='hot', origin='lower', extent=[0, omega3.Lx, 0, omega3.Ly])
+    axs[2].set_title('Room 3 Temperature Distribution')
+    fig.colorbar(im3, ax=axs[2])
+    plt.tight_layout()
+    plt.show()

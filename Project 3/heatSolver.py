@@ -169,7 +169,7 @@ class HeatSolver:
     # Public API
     # ------------------------------------------------------------------ #
 
-    def uppdateBC(self,dirichletBC,neumanBC):
+    def updateBC(self,dirichletBC,neumanBC):
         #If DBC or NBC should not be uppdated, set them as None
 
         if dirichletBC == None:
