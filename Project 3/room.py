@@ -66,7 +66,7 @@ class room:
         side_to_indices : dict
             A mapping from side names to their corresponding grid indices.
         neighbors : list
-            A list of neighboring room couplings. 
+            A list of neighboring room couplings.
         couplings : dict
             A dictionary to store coupling details by neighbor name.
         u : numpy.ndarray
@@ -99,7 +99,7 @@ class room:
         self.window_temp = window_temp
         self.normal_wall_temp = normal_wall_temp
         self.side_to_indices = {}
-        self.neighbors = []  # List to store neighboring room couplings
+        self.neighbors = []  # List to store neighboring room couplings 
         self.couplings = {}  # Dictionary to store coupling details by neighbor name
         self.u = np.zeros(self.N)  # Initialize temperature array
         self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
@@ -168,11 +168,33 @@ class room:
         self.N[3] = None
 
     def add_coupling(self, coupling):
-        '''Add a coupling to a neighboring room.
+        """
+        Adds a coupling between this room and a neighboring room.
+
         Parameters
-        ----------
-            coupling : dict
-                The neighboring room (e.g., {"neighbor" : <room_object>, "side": "bottom", "start": 0, "end": 1}).'''
+        coupling : dict
+            A dictionary specifying the coupling details. Must contain the following keys:
+            - "neighbor": An instance of the neighboring room (must be of type `room`).
+            - "side": A string indicating which side of the current room is coupled ("bottom", "left", "top", "right").
+            - "start": Length of the start along the specified side from NEIGHBOR's perspective.
+            - "end": Length of the end along the specified side from NEIGHBOR's perspective.
+
+
+        Raises
+        ------
+        ValueError
+            If the coupling dictionary is missing required keys, contains invalid values, or types are incorrect.
+
+        Example
+        -------
+        >>> coupling = {
+        ...     "neighbor": room_instance,
+        ...     "side": "left",
+        ...     "start": 0,
+        ...     "end": 5
+        ... }
+        >>> room.add_coupling(coupling)
+        """
         check_keys = {"neighbor", "side", "start", "end"}
         if not isinstance(coupling, dict) or set(coupling.keys()) != check_keys:
             raise ValueError(f"Coupling must be a dictionary with keys: {', '.join(sorted(check_keys))}.")
