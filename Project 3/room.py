@@ -197,9 +197,9 @@ class Room:
         if coupling["side"] not in {"bottom", "left", "top", "right"}:
             raise ValueError("The 'side' must be one of: bottom, left, top, right.")
         if not isinstance(coupling["start"], float) or coupling["start"] < 0:
-            raise ValueError("The 'start' must be a non-negative integer.")
+            raise ValueError("The 'start' must be a non-negative float.")
         if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
-            raise ValueError("The 'end' must be an integer greater than 'start'.")
+            raise ValueError("The 'end' must be a float greater than 'start'.")
         self.neighbors.append(coupling)
 
     def get_boundary_value(self, side, start, end):
