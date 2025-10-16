@@ -43,7 +43,20 @@ from heatSolver import HeatSolver
 
 
 class Room:
+
     walls_order = {"bottom": 0, "left": 1, "top": 2, "right": 3}
+
+    @staticmethod
+    def opposite_side(side):
+        opposites = {
+            "bottom": "top",
+            "top": "bottom",
+            "left": "right",
+            "right": "left"
+        }
+        return opposites.get(side, None)
+
+
     '''
     A class to represent a room in the apartment.
     
@@ -107,20 +120,12 @@ class Room:
         self.new_u = np.zeros(self.N_tot)  # For relaxation
         self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
         self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
+        self.boundary_mask = {"bottom": None, "left": None, "top": None, "right": None}
 
         self._initialize_BCs(self.heater_sides, self.window_sides)
         
         self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
 
-
-    def _opposite_side(self, side):
-        opposites = {
-            "bottom": "top",
-            "top": "bottom",
-            "left": "right",
-            "right": "left"
-        }
-        return opposites.get(side, None)
     
     def _initialize_BCs(self, heater_sides, window_sides):
         #in case the user types mistakes
@@ -220,6 +225,8 @@ class Room:
 
         self.neighbors.append(coupling)
 
+        self.generate_boundary_masks()
+
     def get_boundary_value(self, side, start, end):
         '''Get the boundary value for a specific side and start index.
         Parameters
@@ -264,18 +271,18 @@ class Room:
             raise ValueError("The specified room is not a neighbor.")
         return my_start, my_end
 
-    def get_potential_boundary(self, side, start, end):
-        mask = [False] * (self.Nx if side in {"bottom", "top"} else self.Ny)
-        for neighbor in self.neighbors:
-            if side != neighbor["side"]:
-                continue
-            full_boundary = self.side_to_indices[side]
-            n = len(full_boundary)
-            full_length = self.Lx if side in {"bottom", "top"} else self.Ly
-            x = np.linspace(0, full_length, n)
-            mask |= (x >= start) & (x <= end)
-        return mask
-            
+    def generate_boundary_masks(self):
+        for side in Room.walls_order.keys():
+            mask = [False] * (self.Nx if side in {"bottom", "top"} else self.Ny)
+            for neighbor in self.neighbors:
+                if side != neighbor["side"]:
+                    continue
+                full_boundary = self.side_to_indices[side]
+                n = len(full_boundary)
+                full_length = self.Lx if side in {"bottom", "top"} else self.Ly
+                x = np.linspace(0, full_length, n)
+                mask |= (x >= neighbor["start"]) & (x <= neighbor["end"])
+            self.boundary_mask[side] = mask
 
     def create_full_boundary_array(self, values, side, start, end):
         full_boundary = self.side_to_indices[side]
@@ -284,16 +291,18 @@ class Room:
         x = np.linspace(0, full_length, n)
         mask = [False if (x[i] < start) | (x[i] > end) else True for i in range(n)]
         full_boundary_array = np.zeros(n)
+        
+
+        boundary_mask = self.boundary_mask[side]
         j = 0
-
-        boundary_mask = self.get_potential_boundary(side, start, end)
-
         for i in range(n):
             if mask[i]:
                 full_boundary_array[i] = values[j]
                 j += 1
             elif not boundary_mask[i]:
-                full_boundary_array[i] = 15.0
+                full_boundary_array[i] = self.normal_wall_temp
+            elif self.D[Room.walls_order[side]] is not None:
+                full_boundary_array[i] = self.D[Room.walls_order[side]][i]
         return full_boundary_array
 
 
@@ -311,7 +320,7 @@ class Room:
 
             # Get the boundary values from the neighboring room
             neighbor_values = neighbor.get_boundary_value(
-                self._opposite_side(side), their_start, their_end
+                Room.opposite_side(side), their_start, their_end
             )
 
             if neighbor_values is None:
@@ -334,30 +343,33 @@ class Room:
         self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
 
 if __name__ == "__main__":
+    four = True  
+
     omega1 = Room("Omega 1", 0.01, (1.0, 1.0), heater_sides=["left"])
     omega2 = Room("Omega 2", 0.01, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
     omega3 = Room("Omega 3", 0.01, (1.0, 1.0), heater_sides=["right"])
-    omega4 = Room("Omega 4", 0.01, (0.5, 0.5), heater_sides=["bottom"])
+    omega4 = Room("Omega 4", 0.01, (0.5, 0.5), heater_sides=["bottom"]) if four else None
 
     omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0, "type": "neumann"})
     omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type": "dirichlet"})
     omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0, "type": "dirichlet"})
-    omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"})
+    omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"}) if four else None
     omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type": "neumann"})
-    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "neumann"})
-    omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5, "type": "neumann"})
-    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"})
+    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+    omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
 
     for _ in range(10):
         omega2.iterate_room()
         omega1.iterate_room()
         omega3.iterate_room()
-        omega4.iterate_room()
+        omega4.iterate_room() if four else None
         
 
     print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
     print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
     print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
+    print("Room 4 Temperature Distribution:\n", omega4.u.reshape((omega4.Ny, omega4.Nx))) if four else None
 
     #plotting
     import matplotlib.pyplot as plt
@@ -372,8 +384,8 @@ if __name__ == "__main__":
     im3 = axs[2].imshow(omega3.u.reshape((omega3.Ny, omega3.Nx)), cmap='hot', origin='lower', extent=[0, omega3.Lx, 0, omega3.Ly])
     axs[2].set_title('Room 3 Temperature Distribution')
     fig.colorbar(im3, ax=axs[2])
-    im4 = axs[3].imshow(omega4.u.reshape((omega4.Ny, omega4.Nx)), cmap='hot', origin='lower', extent=[0, omega4.Lx, 0, omega4.Ly])
-    axs[3].set_title('Room 4 Temperature Distribution')
-    fig.colorbar(im4, ax=axs[3])
+    im4 = axs[3].imshow(omega4.u.reshape((omega4.Ny, omega4.Nx)), cmap='hot', origin='lower', extent=[0, omega4.Lx, 0, omega4.Ly]) if four else None
+    axs[3].set_title('Room 4 Temperature Distribution') if four else None
+    fig.colorbar(im4, ax=axs[3]) if four else None
     plt.tight_layout()
     plt.show()
