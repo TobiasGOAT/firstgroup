@@ -124,7 +124,7 @@ class Apartment:
     def iterate(self):
         if args.geometry=="default":
             for room, dirichlet in zip(self.rooms, [True, False, True]):
-                room.iterate_room(not dirichlet)
+                room.iterate_room(dirichlet)
                 if args.verbose:
                     print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
             return
