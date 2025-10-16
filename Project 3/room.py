@@ -1,7 +1,7 @@
 import numpy as np
 from heatSolver import HeatSolver
 
-''' This is the way the axes for the coupling ("start" and "end") will be defined:
+""" This is the way the axes for the coupling ("start" and "end") will be defined:
                                                                   @                    
                                                                   @@@@                
            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
@@ -39,12 +39,12 @@ from heatSolver import HeatSolver
                                                                   @@@@                
            @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
                                                                    @@@@@              
-                                                                  @@                  '''
+                                                                  @@                  """
 
 
 class Room:
     walls_order = {"bottom": 0, "left": 1, "top": 2, "right": 3}
-    '''
+    """
     A class to represent a room in the apartment.
     
     Attributes
@@ -85,15 +85,26 @@ class Room:
             Get the boundary value for a specific side and start index.
         iterate_room()
             Update the room's temperature distribution.
-    '''
+    """
 
-    def __init__(self, aname, dx, shape, relaxation = 0.8, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
+    def __init__(
+        self,
+        aname,
+        dx,
+        shape,
+        relaxation=0.8,
+        heater_sides=None,
+        window_sides=None,
+        heater_temp=40,
+        window_temp=5,
+        normal_wall_temp=15,
+    ):
         self.aname = aname
         self.relaxation = relaxation
         self.dx = dx
         self.Lx, self.Ly = shape
-        self.Nx = int(self.Lx / self.dx) + 1 #number of grid points in x direction
-        self.Ny = int(self.Ly / self.dx) + 1 #number of grid points in y direction
+        self.Nx = int(self.Lx / self.dx) + 1  # number of grid points in x direction
+        self.Ny = int(self.Ly / self.dx) + 1  # number of grid points in y direction
         self.N_tot = self.Nx * self.Ny
         self.heater_sides = heater_sides or []
         self.window_sides = window_sides or []
@@ -101,7 +112,7 @@ class Room:
         self.window_temp = window_temp
         self.normal_wall_temp = normal_wall_temp
         self.side_to_indices = {}
-        self.neighbors = []  # List to store neighboring room couplings 
+        self.neighbors = []  # List to store neighboring room couplings
         self.couplings = {}  # Dictionary to store coupling details by neighbor name
         self.u = np.zeros(self.N_tot)  # Initialize temperature array
         self.new_u = np.zeros(self.N_tot)  # For relaxation
@@ -109,33 +120,29 @@ class Room:
         self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
 
         self._initialize_BCs(self.heater_sides, self.window_sides)
-        
+
         self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
-        self.N[0] = np.full(self.Nx, 0) #
+        self.N[0] = np.full(self.Nx, 0)  #
         self.N[1] = np.full(self.Ny, 0)
         self.N[2] = np.full(self.Nx, 0)
         self.N[3] = np.full(self.Ny, 0)
-
+        self._tempN=self.N.copy()
+        self._tempD=self.D.copy()
 
     def _opposite_side(self, side):
-        opposites = {
-            "bottom": "top",
-            "top": "bottom",
-            "left": "right",
-            "right": "left"
-        }
+        opposites = {"bottom": "top", "top": "bottom", "left": "right", "right": "left"}
         return opposites.get(side, None)
-    
+
     def _initialize_BCs(self, heater_sides, window_sides):
-        #in case the user types mistakes
+        # in case the user types mistakes
         valid_sides = {"bottom", "left", "top", "right"}
         groups_to_check = [
             ("heater_sides", heater_sides),
-            ("window_sides", window_sides)
+            ("window_sides", window_sides),
         ]
 
         for group_name, sides in groups_to_check:
-            #Check each side name given by the user
+            # Check each side name given by the user
             for s in sides:
                 if s not in valid_sides:
                     raise ValueError(
@@ -143,30 +150,40 @@ class Room:
                         f"Valid names are: {', '.join(sorted(valid_sides))}."
                     )
 
-        #Boundary Indices
+        # Boundary Indices
         self.side_to_indices["bottom"] = np.arange(0, self.Nx)
         self.side_to_indices["left"] = np.arange(0, self.N_tot, self.Nx)
         self.side_to_indices["top"] = np.arange(self.N_tot - self.Nx, self.N_tot)
         self.side_to_indices["right"] = np.arange(self.Nx - 1, self.N_tot, self.Nx)
 
-        self.D[0] = np.full(self.Nx, self.normal_wall_temp) #we set the normal wall as the default value
+        self.D[0] = np.full(
+            self.Nx, self.normal_wall_temp
+        )  # we set the normal wall as the default value
         self.D[1] = np.full(self.Ny, self.normal_wall_temp)
         self.D[2] = np.full(self.Nx, self.normal_wall_temp)
         self.D[3] = np.full(self.Ny, self.normal_wall_temp)
 
-        #Apply window=5 and heater=40 overrides
-        #window_sides is a list of strings that tells us which walls have windows
-        #heater_sides is a list of strings that tells us which walls have heaters
+        # Apply window=5 and heater=40 overrides
+        # window_sides is a list of strings that tells us which walls have windows
+        # heater_sides is a list of strings that tells us which walls have heaters
         for s in window_sides:
-            if   s == "bottom": self.D[0] = np.full(self.Nx, self.window_temp)
-            elif s == "left":   self.D[1] = np.full(self.Ny, self.window_temp)
-            elif s == "top":    self.D[2] = np.full(self.Nx, self.window_temp)
-            elif s == "right":  self.D[3] = np.full(self.Ny, self.window_temp)
+            if s == "bottom":
+                self.D[0] = np.full(self.Nx, self.window_temp)
+            elif s == "left":
+                self.D[1] = np.full(self.Ny, self.window_temp)
+            elif s == "top":
+                self.D[2] = np.full(self.Nx, self.window_temp)
+            elif s == "right":
+                self.D[3] = np.full(self.Ny, self.window_temp)
         for s in heater_sides:
-            if   s == "bottom": self.D[0] = np.full(self.Nx, self.heater_temp)
-            elif s == "left":   self.D[1] = np.full(self.Ny, self.heater_temp)
-            elif s == "top":    self.D[2] = np.full(self.Nx, self.heater_temp)
-            elif s == "right":  self.D[3] = np.full(self.Ny, self.heater_temp)
+            if s == "bottom":
+                self.D[0] = np.full(self.Nx, self.heater_temp)
+            elif s == "left":
+                self.D[1] = np.full(self.Ny, self.heater_temp)
+            elif s == "top":
+                self.D[2] = np.full(self.Nx, self.heater_temp)
+            elif s == "right":
+                self.D[3] = np.full(self.Ny, self.heater_temp)
 
     def add_coupling(self, coupling):
         """
@@ -198,27 +215,32 @@ class Room:
         """
         check_keys = {"neighbor", "side", "start", "end"}
         if not isinstance(coupling, dict) or set(coupling.keys()) != check_keys:
-            raise ValueError(f"Coupling must be a dictionary with keys: {', '.join(sorted(check_keys))}.")
+            raise ValueError(
+                f"Coupling must be a dictionary with keys: {', '.join(sorted(check_keys))}."
+            )
         if not isinstance(coupling["neighbor"], Room):
             raise ValueError("The 'neighbor' must be an instance of the Room class.")
         if coupling["side"] not in {"bottom", "left", "top", "right"}:
             raise ValueError("The 'side' must be one of: bottom, left, top, right.")
         if not isinstance(coupling["start"], float) or coupling["start"] < 0:
             raise ValueError("The 'start' must be a non-negative float.")
-        if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
+        if "end" in coupling and (
+            not isinstance(coupling["end"], float)
+            or coupling["end"] <= coupling["start"]
+        ):
             raise ValueError("The 'end' must be a float greater than 'start'.")
-        
+
         # Adjust BC to Neumann for the coupled side
         full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
         self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
-        #self.D[Room.walls_order[coupling["side"]]] = None  # Remove Dirichlet BC for this side
+        # self.D[Room.walls_order[coupling["side"]]] = None  # Remove Dirichlet BC for this side
 
         self.solver.updateBC(self.D, self.N)
 
         self.neighbors.append(coupling)
 
     def get_boundary_value(self, side, start, end):
-        '''Get the boundary value for a specific side and start index.
+        """Get the boundary value for a specific side and start index.
         Parameters
         ----------
             side : str
@@ -230,13 +252,13 @@ class Room:
         Returns
         -------
             numpy.ndarray or None
-                The boundary value if set, otherwise None.'''
+                The boundary value if set, otherwise None."""
         valid_sides = {"bottom", "left", "top", "right"}
 
         if side not in valid_sides:
-            raise ValueError(f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}.")
-
-        
+            raise ValueError(
+                f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}."
+            )
 
         full_boundary = self.side_to_indices[side]
         full_length = self.Lx if side in {"bottom", "top"} else self.Ly
@@ -260,28 +282,37 @@ class Room:
         if my_start is None or my_end is None:
             raise ValueError("The specified room is not a neighbor.")
         return my_start, my_end
-
+    def _float_to_int_idx(self, flt, side):
+        if side in ["bottom", "top"]:
+            return int(flt / self.Lx * self.Nx - 1e-10)
+        return int(flt / self.Ly * self.Ny - 1e-10)
     def iterate_room(self, dirichlet_inner_wall=False):
-        '''Update the room's temperature distribution.'''
-        #Update boundary conditions from neighbors
-        def _float_to_int_idx(flt, side):
-            if side in ["bottom", "top"]:
-                return int(flt*self.Lx/self.Nx-1e-10)
-            return int(flt*self.Ly/self.Ny-1e-10)
+        """Update the room's temperature distribution."""
+
+        # Update boundary conditions from neighbors
+
+
         for coupling in self.neighbors:
             neighbor = coupling["neighbor"]
             side = coupling["side"]
-            my_start = _float_to_int_idx(coupling["start"], side) #fine if sides are mirrored here
-            my_end = _float_to_int_idx(coupling.get("end"), side)
+            my_start = self._float_to_int_idx(
+                coupling["start"], side
+            )  # fine if sides are mirrored here
+            my_end = self._float_to_int_idx(coupling.get("end"), side)
             their_start, their_end = neighbor.give_border_start_and_end(self)
-            their_end=_float_to_int_idx(their_end, side)
-            their_start=_float_to_int_idx(their_start, side)
+            their_end = neighbor._float_to_int_idx(their_end, side)
+            their_start = neighbor._float_to_int_idx(their_start, side)
+
             if dirichlet_inner_wall:
-                self.D[Room.walls_order[side]][my_start:my_end]=neighbor.D[Room.walls_order[side]][their_start:their_end]
+                self.D[Room.walls_order[side]][my_start:my_end] = neighbor._tempD[
+                    Room.walls_order[side]
+                ][their_start:their_end]
             else:
 
-                self.N[Room.walls_order[side]][my_start:my_end]=neighbor.N[Room.walls_order[side]][their_start:their_end]
-
+                self.N[Room.walls_order[side]][my_start:my_end] = neighbor._tempN[
+                    Room.walls_order[side]
+                ][their_start:their_end]
+                self.D[Room.walls_order[side]]=None
             # # Get the boundary values from the neighboring room
             # neighbor_values = neighbor.get_boundary_value(
             #     self._opposite_side(side), their_start, their_end
@@ -299,14 +330,26 @@ class Room:
 
         self.solver.updateBC(self.D, self.N)
 
-        self.new_u, bcs = self.solver.solve(True)
-        self.N=bcs["neumann"]
-        self.D=bcs["dirichlet"]
-        self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
+        self.new_u, bcs = self.solver.solve(self.relaxation)
+
+        self._tempN=[e.astype(float) for e in self._tempN]
+        self._tempD=[e.astype(float) for e in self._tempD]
+        for i in range(4):
+            self._tempN[i]*=1-self.relaxation
+            self._tempN[i]+=bcs["neumann"][i]
+            self._tempD[i]*=1-self.relaxation
+            self._tempD[i]+=bcs["dirichlet"][i]
+        # self._tempN=bcs["neumann"]
+        # self._tempD=bcs["dirichlet"]
+        self.u *= 1 - self.relaxation
+        self.u += self.new_u
+
 
 if __name__ == "__main__":
     omega1 = Room("Omega 1", 0.1, (1.0, 1.0), heater_sides=["left"])
-    omega2 = Room("Omega 2", 0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
+    omega2 = Room(
+        "Omega 2", 0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"]
+    )
     omega3 = Room("Omega 3", 0.1, (1.0, 1.0), heater_sides=["right"])
 
     omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0})
@@ -318,24 +361,39 @@ if __name__ == "__main__":
         omega2.iterate_room(dirichlet_inner_wall=False)
         omega1.iterate_room(dirichlet_inner_wall=True)
         omega3.iterate_room(dirichlet_inner_wall=True)
-        
+        print(omega2.D[3])
 
     # print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
     # print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
     # print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
 
-    #plotting
+    # plotting
     import matplotlib.pyplot as plt
 
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-    im1 = axs[0].imshow(omega1.u.reshape((omega1.Ny, omega1.Nx)), cmap='hot', origin='lower', extent=[0, omega1.Lx, 0, omega1.Ly])
-    axs[0].set_title('Room 1 Temperature Distribution')
+    im1 = axs[0].imshow(
+        omega1.u.reshape((omega1.Ny, omega1.Nx)),
+        cmap="hot",
+        origin="lower",
+        extent=[0, omega1.Lx, 0, omega1.Ly],
+    )
+    axs[0].set_title("Room 1 Temperature Distribution")
     fig.colorbar(im1, ax=axs[0])
-    im2 = axs[1].imshow(omega2.u.reshape((omega2.Ny, omega2.Nx)), cmap='hot', origin='lower', extent=[0, omega2.Lx, 0, omega2.Ly])
-    axs[1].set_title('Room 2 Temperature Distribution')
+    im2 = axs[1].imshow(
+        omega2.u.reshape((omega2.Ny, omega2.Nx)),
+        cmap="hot",
+        origin="lower",
+        extent=[0, omega2.Lx, 0, omega2.Ly],
+    )
+    axs[1].set_title("Room 2 Temperature Distribution")
     fig.colorbar(im2, ax=axs[1])
-    im3 = axs[2].imshow(omega3.u.reshape((omega3.Ny, omega3.Nx)), cmap='hot', origin='lower', extent=[0, omega3.Lx, 0, omega3.Ly])
-    axs[2].set_title('Room 3 Temperature Distribution')
+    im3 = axs[2].imshow(
+        omega3.u.reshape((omega3.Ny, omega3.Nx)),
+        cmap="hot",
+        origin="lower",
+        extent=[0, omega3.Lx, 0, omega3.Ly],
+    )
+    axs[2].set_title("Room 3 Temperature Distribution")
     fig.colorbar(im3, ax=axs[2])
     plt.tight_layout()
     plt.show()

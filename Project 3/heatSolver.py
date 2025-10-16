@@ -185,7 +185,7 @@ class HeatSolver:
         self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
         self.K = self.K.tocsr()
 
-    def solve(self, dirElseNeu: bool):
+    def solve(self, relaxation=0.8):
         """
         Solve A u = b.
 
@@ -200,7 +200,7 @@ class HeatSolver:
         u : (N_x*N_y,) ndarray
         sideValues : list of 1D ndarrays (order: [bottom, left, top, right])
         """
-        u = sp.linalg.spsolve(self.K, self.b).ravel()
+        u = sp.linalg.spsolve(self.K, self.b).ravel()*relaxation
 
         #sideValues = []
         neumanns=[]
