@@ -2,18 +2,20 @@
 FMNN25 Advanced Course in Numerical Algorithms with Python/SciPy - Group 1 - Projects
 Members and Contributions:
     Tobias Rydén
-        Data Loader
-        Additions to Trainer
-        General
+        room.py
     Vahid Faraji
-        Attacker
-        Attacker Extension
+        Divergence analysis
+        Res calculation
     Johan Fritz
-        Data class
-        NN implementation
-        Bitwise trainer
+        cli_helper.py
+        cli_parser.py
+        geometry.py
+        main.py
     Samuel Eriksson
-        Trainer
-        General loss
+        heatSolver.py
+        verificationProblem.py
+    Valia Diamantaki
+        _initialize_BCs
+        sparse in heatSolver.py
 
 
