@@ -44,7 +44,7 @@ class Apartment:
                 "end": 2.0,
                 "type":"dirichlet"
             }
-            coupling3_2 = {"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type":"dirichlet"}
+            coupling3_2 = {"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0}
             coupling2_4 = {
                 "neighbor": omega4,
                 "side": "right",
@@ -57,6 +57,7 @@ class Apartment:
                 "side": "right",
                 "start": 0.0,
                 "end": 0.5,
+                "type":"dirichlet"
             }
             coupling3_4 = {
                 "neighbor": omega4,
@@ -192,6 +193,5 @@ class Apartment:
             #array[Y-Nys[2], Nxs[0]+Nxs[1]-2:]/=2
             plt.imshow(array, aspect=1, origin="lower")
             plt.colorbar()
-            print(self.rooms[3].u.reshape((Nys[3], Nxs[3])))
             plt.show()
             return
