@@ -99,30 +99,6 @@ class HeatSolver:
     # ------------------------------------------------------------------ #
     # Internals
     # ------------------------------------------------------------------ #
-    def _construct(self,dirichletBC,neumanBC):
-        """Unscaled 5-point Laplacian in LIL format (row-major flattening)."""
-        main = -4.0 * np.ones(self.K_size)
-        lr = np.ones(self.K_size - 1)
-        # prevent wrap-around between rows for left/right neighbors
-        lr[np.arange(1, self.N_y) * self.N_x - 1] = 0.0
-        ud = np.ones(self.K_size - self.N_x)
-        K = sp.diags(
-            diagonals=[main, lr, lr, ud, ud],
-            offsets=[0, 1, -1, self.N_x, -self.N_x],
-            format='lil'
-        )
-
-        K = K / (self.dx ** 2)      #scale by 1/h^2 (before BCs)
-
-        b = np.zeros((self.K_size,), dtype=float)   #Build RHS and apply boundary conditions
-
-        # Apply BCs per side in order: [bottom, left, top, right]
-        self._applyBC(K,b,dirichletBC[0], neumanBC[0], self.ranges[0][0])   #bottom
-        self._applyBC(K,b,dirichletBC[1], neumanBC[1], self.ranges[0][1])   #left
-        self._applyBC(K,b,dirichletBC[2], neumanBC[2], self.ranges[0][2])   #top
-        self._applyBC(K,b,dirichletBC[3], neumanBC[3], self.ranges[0][3])   #right
-
-        return K,b
 
     def _createRanges(self):
         Nx, Ny = self.N_x, self.N_y
@@ -149,17 +125,73 @@ class HeatSolver:
             "left":   (left,   left_in),
             "top":    (top,    top_in),
             "right":  (right,  right_in),
-        }
+        }    
 
-    def _applyBC(self, K, b, DBCList, NBCList, boundary_indices):
+    def _construct(self,dirichletBC,neumanBC):
+        """Unscaled 5-point Laplacian in LIL format (row-major flattening)."""
+        main = -4.0 * np.ones(self.K_size)
+        lr = np.ones(self.K_size - 1)
+        # prevent wrap-around between rows for left/right neighbors
+        lr[np.arange(1, self.N_y) * self.N_x - 1] = 0.0
+        ud = np.ones(self.K_size - self.N_x)
+        K = sp.diags(
+            diagonals=[main, lr, lr, ud, ud],
+            offsets=[0, 1, -1, self.N_x, -self.N_x],
+            format='lil'
+        )
+
+        K = K / (self.dx ** 2)      #scale by 1/h^2 (before BCs)
+
+        b = np.zeros((self.K_size,), dtype=float)   #Build RHS and apply boundary conditions
+
+        # Apply BCs per side in order: [bottom, left, top, right]
+        self._applyBC(K, b, dirichletBC[0], neumanBC[0], self.ranges[0][0], "bottom")
+        self._applyBC(K, b, dirichletBC[1], neumanBC[1], self.ranges[0][1], "left")
+        self._applyBC(K, b, dirichletBC[2], neumanBC[2], self.ranges[0][2], "top")
+        self._applyBC(K, b, dirichletBC[3], neumanBC[3], self.ranges[0][3], "right")
+
+        return K,b
+
+   
+
+    def _applyBC(self, K, b, DBCList, NBCList, boundary_indices,sideName):
+
+        if not hasattr(self, "_bd_to_inner"):
+            self._bd_to_inner = {}
+            for side in ("bottom", "left", "top", "right"):
+                bd_idx, in_idx = self.range_map[side]
+                for bidx, iidx in zip(bd_idx, in_idx):
+                    self._bd_to_inner[bidx] = iidx
+
+
         #Neumann first (only if provided)
         if NBCList is not None:
+            if np.isscalar(NBCList):
+                NBCList = np.full(len(boundary_indices), NBCList, dtype=float)
+            NBCList = np.asarray(NBCList, dtype=float)
+
+            # Explicitly set sign and formula per side
+            # formula: u_bd = u_inner + sign * dx * g
+            side_sign = {
+                "bottom": +1.0,  # u_bd = u_inner + dx * q_bottom
+                "top":    -1.0,  # u_bd = u_inner - dx * q_top
+                "left":   +1.0,  # u_bd = u_inner + dx * q_left
+                "right":  -1.0   # u_bd = u_inner - dx * q_right
+            }[sideName]
+
             for i, g in zip(boundary_indices, NBCList):
-                K[i, i] += 1.0 / (self.dx ** 2)
-                b[i]    += -float(g) / self.dx
+                inner = self._bd_to_inner[i]
+                # Overwrite row to enforce u_bd - u_inner = side_sign * dx * g
+                K.rows[i] = [i, inner]
+                K.data[i] = [1.0, -1.0]
+                b[i] = side_sign * self.dx * g
+
 
         #Dirichlet overwrites (only if provided)
         if DBCList is not None:
+            if np.isscalar(DBCList):
+                DBCList = np.full(len(boundary_indices), DBCList, dtype=float)
+            DBCList = np.asarray(DBCList, dtype=float)
             for i, val in zip(boundary_indices, DBCList):
                 K.rows[i] = [i]         #efficient in LIL: set row to single entry
                 K.data[i] = [1.0]
@@ -185,38 +217,22 @@ class HeatSolver:
         self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
         self.K = self.K.tocsr()
 
-    def solve(self, relaxation=0.8):
+    def solve(self):
         """
         Solve A u = b.
-
-        Parameters
-        ----------
-        dirElseNeu : bool
-            True  → return Dirichlet traces u on [bottom, left, top, right]
-            False → return Neumann traces (∂u/∂n) as (u_inner - u_bd)/dx
-
-        Returns
-        -------
-        u : (N_x*N_y,) ndarray
-        sideValues : list of 1D ndarrays (order: [bottom, left, top, right])
+        Returns:
+            u : (N_x*N_y,) ndarray (flattened field)
+            sides : dict with lists for 'dirichlet' and 'neumann'
         """
-        u = sp.linalg.spsolve(self.K, self.b).ravel()*relaxation
+        u = sp.linalg.spsolve(self.K, self.b).ravel()
 
-        #sideValues = []
-        neumanns=[]
-        dirichlets=[]
+        neumanns = []
+        dirichlets = []
         for s in range(4):
             u_bd = u[self.ranges[0][s]]
             u_in = u[self.ranges[1][s]]
-            neumanns.append(relaxation*(u_in - u_bd) / self.dx)
-            dirichlets.append(relaxation*u[self.ranges[0][s]])
-        # if dirElseNeu:
-        #     for s in range(4):           #Dirichlet traces (values on the boundary)
-        #         sideValues.append(u[self.ranges[0][s]])
-        # else:
-        #     for s in range(4):    #Neumann traces: first-order difference consistent with outward normals
-        #         u_bd = u[self.ranges[0][s]]
-        #         u_in = u[self.ranges[1][s]]
-        #         sideValues.append((u_in - u_bd) / self.dx)
+            neumanns.append((u_in - u_bd) / self.dx)
+            dirichlets.append(u_bd.copy())
 
-        return u, {"neumann":neumanns, "dirichlet":dirichlets}
+        return u, {"neumann": neumanns, "dirichlet": dirichlets}
+
