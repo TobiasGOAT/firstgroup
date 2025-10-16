@@ -175,6 +175,7 @@ class Room:
             - "side": A string indicating which side of the NEIGHBOR room is coupled compared to THIS room ("bottom", "left", "top", "right").
             - "start": Length of the start along the specified side from THIS room's perspective.
             - "end": Length of the end along the specified side from THIS room's perspective.
+            - "type": (Optional) Type of coupling, either "dirichlet" or "neumann". Default is "neumann".
 
 
         Raises
@@ -188,12 +189,13 @@ class Room:
         ...     "neighbor": room_instance,
         ...     "side": "left",
         ...     "start": 0.0,
-        ...     "end": 5.0
+        ...     "end": 5.0,
+        ...     "type": "neumann"
         ... }
         >>> room.add_coupling(coupling)
         """
-        check_keys = {"neighbor", "side", "start", "end"}
-        if not isinstance(coupling, dict) or set(coupling.keys()) != check_keys:
+        check_keys = {"neighbor", "side", "start", "end", "type"}
+        if not isinstance(coupling, dict):
             raise ValueError(f"Coupling must be a dictionary with keys: {', '.join(sorted(check_keys))}.")
         if not isinstance(coupling["neighbor"], Room):
             raise ValueError("The 'neighbor' must be an instance of the Room class.")
@@ -203,10 +205,15 @@ class Room:
             raise ValueError("The 'start' must be a non-negative float.")
         if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
             raise ValueError("The 'end' must be a float greater than 'start'.")
+        if not "type" in coupling:
+            coupling["type"] = "neumann"  # Default to Neumann if not specified  
+        elif "type" in coupling and coupling["type"] not in {"dirichlet", "neumann"}:
+            raise ValueError("The 'type' must be either 'dirichlet' or 'neumann'.")
         
         # Adjust BC to Neumann for the coupled side
-        full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
-        self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
+        if coupling["type"] == "neumann":
+            full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
+            self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
         self.D[Room.walls_order[coupling["side"]]] = None  # Remove Dirichlet BC for this side
 
         self.solver.updateBC(self.D, self.N)
@@ -257,6 +264,19 @@ class Room:
             raise ValueError("The specified room is not a neighbor.")
         return my_start, my_end
 
+    def get_potential_boundary(self, side, start, end):
+        mask = [False] * (self.Nx if side in {"bottom", "top"} else self.Ny)
+        for neighbor in self.neighbors:
+            if side != neighbor["side"]:
+                continue
+            full_boundary = self.side_to_indices[side]
+            n = len(full_boundary)
+            full_length = self.Lx if side in {"bottom", "top"} else self.Ly
+            x = np.linspace(0, full_length, n)
+            mask |= (x >= start) & (x <= end)
+        return mask
+            
+
     def create_full_boundary_array(self, values, side, start, end):
         full_boundary = self.side_to_indices[side]
         full_length = self.Lx if side in {"bottom", "top"} else self.Ly
@@ -264,15 +284,20 @@ class Room:
         x = np.linspace(0, full_length, n)
         mask = [False if (x[i] < start) | (x[i] > end) else True for i in range(n)]
         full_boundary_array = np.zeros(n)
+        j = 0
+
+        boundary_mask = self.get_potential_boundary(side, start, end)
+
         for i in range(n):
-            if x[i] < start or x[i] > end:
-                full_boundary_array[i] = 0.0
-            else:
-                full_boundary_array[i] = values[np.where(mask)[0].tolist().index(i)]
+            if mask[i]:
+                full_boundary_array[i] = values[j]
+                j += 1
+            elif not boundary_mask[i]:
+                full_boundary_array[i] = 15.0
         return full_boundary_array
 
 
-    def iterate_room(self, dirichlet_inner_wall=False):
+    def iterate_room(self):
         '''Update the room's temperature distribution.'''
         #Update boundary conditions from neighbors
         for coupling in self.neighbors:
@@ -294,7 +319,7 @@ class Room:
 
             #border_values = self.get_boundary_value(side, my_start, my_end)
             # Update the Neumann BC for this side based on the neighbor's values
-            if dirichlet_inner_wall:
+            if coupling["type"] == "dirichlet":
                 full_boundary_values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
                 self.D[Room.walls_order[side]] = full_boundary_values
             else:
@@ -311,23 +336,24 @@ class Room:
 if __name__ == "__main__":
     omega1 = Room("Omega 1", 0.01, (1.0, 1.0), heater_sides=["left"])
     omega2 = Room("Omega 2", 0.01, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
-    omega3 = Room("Omega 3", 0.01, (1.0, 1.0), window_sides=["right"])
+    omega3 = Room("Omega 3", 0.01, (1.0, 1.0), heater_sides=["right"])
     omega4 = Room("Omega 4", 0.01, (0.5, 0.5), heater_sides=["bottom"])
 
-    omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0})
-    omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0})
-    omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0})
-    omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0})
-    omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0})
-    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5})
-    omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5})
-    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5})
+    omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0, "type": "neumann"})
+    omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type": "dirichlet"})
+    omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0, "type": "dirichlet"})
+    omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"})
+    omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type": "neumann"})
+    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "neumann"})
+    omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5, "type": "neumann"})
+    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"})
 
     for _ in range(10):
-        omega1.iterate_room(dirichlet_inner_wall=True)
-        omega3.iterate_room(dirichlet_inner_wall=True)
-        omega4.iterate_room(dirichlet_inner_wall=True)
-        omega2.iterate_room(dirichlet_inner_wall=False)
+        omega2.iterate_room()
+        omega1.iterate_room()
+        omega3.iterate_room()
+        omega4.iterate_room()
+        
 
     print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
     print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
