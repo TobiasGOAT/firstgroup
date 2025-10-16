@@ -122,7 +122,7 @@ class Room:
         self._initialize_BCs(self.heater_sides, self.window_sides)
 
         self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
-        self.N[0] = np.full(self.Nx, 0)  #
+        self.N[0] = np.full(self.Nx, 0) 
         self.N[1] = np.full(self.Ny, 0)
         self.N[2] = np.full(self.Nx, 0)
         self.N[3] = np.full(self.Ny, 0)
@@ -291,7 +291,8 @@ class Room:
 
         # Update boundary conditions from neighbors
 
-
+        self.N=[e.astype(float) if e is not None else None for e in self.N]
+        self.D=[e.astype(float) if e is not None else None for e in self.D]
         for coupling in self.neighbors:
             neighbor = coupling["neighbor"]
             side = coupling["side"]
@@ -305,12 +306,13 @@ class Room:
 
             if dirichlet_inner_wall:
                 self.D[Room.walls_order[side]][my_start:my_end] = neighbor._tempD[
-                    Room.walls_order[side]
+                    Room.walls_order[self._opposite_side(side)]
                 ][their_start:their_end]
+                self.N[Room.walls_order[side]]=None
             else:
-
+                
                 self.N[Room.walls_order[side]][my_start:my_end] = neighbor._tempN[
-                    Room.walls_order[side]
+                    Room.walls_order[self._opposite_side(side)]
                 ][their_start:their_end]
                 self.D[Room.walls_order[side]]=None
             # # Get the boundary values from the neighboring room
@@ -358,10 +360,11 @@ if __name__ == "__main__":
     omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0})
 
     for _ in range(10):
-        omega2.iterate_room(dirichlet_inner_wall=False)
-        omega1.iterate_room(dirichlet_inner_wall=True)
-        omega3.iterate_room(dirichlet_inner_wall=True)
-        print(omega2.D[3])
+        omega2.iterate_room(dirichlet_inner_wall=True)
+        omega1.iterate_room(dirichlet_inner_wall=False)
+        omega3.iterate_room(dirichlet_inner_wall=False)
+        print(omega1._tempD[3])
+        print(omega2._tempD[1])
 
     # print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
     # print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
