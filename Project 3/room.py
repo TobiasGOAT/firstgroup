@@ -292,14 +292,14 @@ class Room:
             if neighbor_values is None:
                 continue  # Skip if no values are returned
 
-            border_values = self.get_boundary_value(side, my_start, my_end)
+            #border_values = self.get_boundary_value(side, my_start, my_end)
             # Update the Neumann BC for this side based on the neighbor's values
             if dirichlet_inner_wall:
                 full_boundary_values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
                 self.D[Room.walls_order[side]] = full_boundary_values
             else:
-                neumann_boundary = (np.array(neighbor_values) - np.array(border_values)) / self.dx
-                #neumann_boundary = np.array(neighbor_values)
+                #neumann_boundary = (np.array(neighbor_values) - np.array(border_values)) / self.dx
+                neumann_boundary = -np.array(neighbor_values)
                 full_boundary_values = self.create_full_boundary_array(neumann_boundary, side, my_start, my_end)
                 self.N[Room.walls_order[side]] = full_boundary_values
 
@@ -309,10 +309,10 @@ class Room:
         self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
 
 if __name__ == "__main__":
-    omega1 = Room("Omega 1", 0.1, (1.0, 1.0), heater_sides=["left"])
-    omega2 = Room("Omega 2", 0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
-    omega3 = Room("Omega 3", 0.1, (1.0, 1.0), window_sides=["right"])
-    omega4 = Room("Omega 4", 0.1, (0.5, 0.5), heater_sides=["bottom"])
+    omega1 = Room("Omega 1", 0.01, (1.0, 1.0), heater_sides=["left"])
+    omega2 = Room("Omega 2", 0.01, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
+    omega3 = Room("Omega 3", 0.01, (1.0, 1.0), window_sides=["right"])
+    omega4 = Room("Omega 4", 0.01, (0.5, 0.5), heater_sides=["bottom"])
 
     omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0})
     omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0})
