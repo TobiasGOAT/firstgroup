@@ -4,6 +4,7 @@
 from geometry import Apartment
 from cli_parser import args
 from cli_helpers import *
+
 if args.verbose:
     print(f"Apartment layout is set to '{args.geometry}'")
 
@@ -18,4 +19,3 @@ for i in range(args.iterations):
     apartment.iterate()
 if args.plot:
     apartment.plot()
-

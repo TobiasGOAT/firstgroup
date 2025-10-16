@@ -202,14 +202,21 @@ class HeatSolver:
         """
         u = sp.linalg.spsolve(self.K, self.b).ravel()
 
-        sideValues = []
-        if dirElseNeu:
-            for s in range(4):           #Dirichlet traces (values on the boundary)
-                sideValues.append(u[self.ranges[0][s]])
-        else:
-            for s in range(4):    #Neumann traces: first-order difference consistent with outward normals
-                u_bd = u[self.ranges[0][s]]
-                u_in = u[self.ranges[1][s]]
-                sideValues.append((u_in - u_bd) / self.dx)
+        #sideValues = []
+        neumanns=[]
+        dirichlets=[]
+        for s in range(4):
+            u_bd = u[self.ranges[0][s]]
+            u_in = u[self.ranges[1][s]]
+            neumanns.append((u_in - u_bd) / self.dx)
+            dirichlets.append(u[self.ranges[0][s]])
+        # if dirElseNeu:
+        #     for s in range(4):           #Dirichlet traces (values on the boundary)
+        #         sideValues.append(u[self.ranges[0][s]])
+        # else:
+        #     for s in range(4):    #Neumann traces: first-order difference consistent with outward normals
+        #         u_bd = u[self.ranges[0][s]]
+        #         u_in = u[self.ranges[1][s]]
+        #         sideValues.append((u_in - u_bd) / self.dx)
 
-        return u, sideValues
+        return u, {"neumann":neumanns, "dirichlet":dirichlets}
