@@ -122,9 +122,16 @@ class Apartment:
             raise NotImplementedError("only default layout implemented")
 
     def iterate(self):
-        if args.geometry=="default":
+        if args.geometry == "default":
             for room, dirichlet in zip(self.rooms, [True, False, True]):
-                room.iterate_room(not dirichlet)
+                room.iterate_room(dirichlet)
+                if args.verbose:
+                    print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
+            return
+        elif args.geometry == "alternative":
+            for room, dirichlet in zip(self.rooms, [True, False, True, True]):
+                room.iterate_room(dirichlet)
+                room.iterate_room(dirichlet)
                 if args.verbose:
                     print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
             return
@@ -137,41 +144,52 @@ class Apartment:
         if args.geometry == "default":
             Nxs = [room.Nx for room in self.rooms]
             Nys = [room.Ny for room in self.rooms]
-            X = sum(Nxs)-2
+            X = sum(Nxs) - 2
             Y = max(Nys)
             array = np.zeros((Y, X))  # advanced plotting going on here
-            array[:Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
-            array[:, Nxs[0] -1: Nxs[0] + Nxs[1]-1] += self.rooms[1].u.reshape(
+            array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+            array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += self.rooms[1].u.reshape(
                 (Nys[1], Nxs[1])
             )
-            array[Y-Nys[2]:, Nxs[0]-2 + Nxs[1] :Nxs[0]-2 + Nxs[1]+Nxs[2]] += self.rooms[
-                2
-            ].u.reshape((Nys[2], Nxs[2]))
-            array[:Nys[0], Nxs[0]-1]/=2 #average on overlapping nodes
-            array[Y-Nys[2]:, Nxs[0]+Nxs[1]-2]/=2
-            eps=args.dx/2
-            plt.imshow(array, aspect=1, origin="lower", extent=[-eps, sum(room.Lx for room in self.rooms)+eps, -eps,eps+ max([room.Ly for room in self.rooms])])
+            array[
+                Y - Nys[2] :, Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2]
+            ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
+            array[: Nys[0], Nxs[0] - 1] /= 2  # average on overlapping nodes
+            array[Y - Nys[2] :, Nxs[0] + Nxs[1] - 2] /= 2
+            eps = args.dx / 2
+            plt.imshow(
+                array,
+                aspect=1,
+                origin="lower",
+                extent=[
+                    -eps,
+                    sum(room.Lx for room in self.rooms) + eps,
+                    -eps,
+                    eps + max([room.Ly for room in self.rooms]),
+                ],
+            )
             plt.colorbar()
-
             plt.show()
             return
         elif args.geometry == "alternative":
             Nxs = [room.Nx for room in self.rooms]
             Nys = [room.Ny for room in self.rooms]
-            X = sum(Nxs[:-1])
+            X = sum(Nxs[:-1]) - 2
             Y = max(Nys)
             array = np.zeros((Y, X))  # advanced plotting going on here
-            array[Y - Nys[0] :, : Nxs[0]] = self.rooms[0].u.reshape((Nys[0], Nxs[0]))
-            array[:, Nxs[0] : Nxs[0] + Nxs[1]] = self.rooms[1].u.reshape(
+            array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+            array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += self.rooms[1].u.reshape(
                 (Nys[1], Nxs[1])
             )
-            array[: Nys[2], Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2]] = self.rooms[
-                2
-            ].u.reshape((Nys[2], Nxs[2]))
             array[
-                Nys[2] : Nys[2] + Nys[3], Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[3]
-            ] = self.rooms[3].u.reshape((Nys[3], Nxs[3]))
-            plt.imshow(array, aspect=1)
+                Y - Nys[2] :, Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2]
+            ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
+            array[Y-Nys[2]-Nys[3]+1:Y-Nys[2]+1, Nxs[0]+Nxs[1]-2:Nxs[0]+Nxs[1]+Nxs[3]-2]+=self.rooms[3].u.reshape((Nys[3], Nxs[3]))
+            array[: Nys[0], Nxs[0] - 1] /= 2  # average on overlapping nodes
+            array[Y - Nys[2]-Nys[3]+1 :, Nxs[0] + Nxs[1] - 2] /= 2
+            array[Y-Nys[2], Nxs[0]+Nxs[1]-2:]/=2
+            plt.imshow(array, aspect=1, origin="lower")
             plt.colorbar()
+            print(self.rooms[3].u.reshape((Nys[3], Nxs[3])))
             plt.show()
             return

@@ -1,94 +1,73 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from heatSolver import HeatSolver   # <-- replace with your file name
+from heatSolver import HeatSolver
 
+def run_verification_with_plot(dx=0.05, Lx=2.0, Ly=1.0):
+    Nx = int(Lx / dx) + 1
+    Ny = int(Ly / dx) + 1
+    x = np.linspace(0, Lx, Nx)
+    y = np.linspace(0, Ly, Ny)
+    X, Y = np.meshgrid(x, y, indexing='xy')
 
-# ---------------------------------------------------------------------
-# Domain and parameters
-# ---------------------------------------------------------------------
-Lx, Ly = 2.0, 1.0
-dx = 0.05
+    # --- Exact linear solution ---
+    a = 0.7
+    b = 1.3
+    c = -0.4
+    def u_exact_fn(x, y): return a + b*x + c*y
 
-Nx = int(Lx/dx) + 1
-Ny = int(Ly/dx) + 1
-x = np.linspace(0, Lx, Nx)
-y = np.linspace(0, Ly, Ny)
-X, Y = np.meshgrid(x, y, indexing="xy")
+    u_exact = u_exact_fn(X, Y)
 
-# ---------------------------------------------------------------------
-# Manufactured exact solution (harmonic)
-# ---------------------------------------------------------------------
-def u_exact_fn(x, y):
-    return np.sin(np.pi * x / Lx) * np.sinh(np.pi * y / Lx)
+    # Dirichlet on left/right
+    dir_left  = u_exact_fn(0.0, y)
+    dir_right = u_exact_fn(Lx, y)
 
-u_exact = u_exact_fn(X, Y)
+    # Neumann on bottom/top (outward normal)
+    q_bottom = np.full(Nx, -c)
+    q_top    = np.full(Nx,  c)
 
-# ---------------------------------------------------------------------
-# Compute boundary data
-# ---------------------------------------------------------------------
-# Dirichlet (vertical)
-u_left = u_exact_fn(0, y)
-u_right = u_exact_fn(Lx, y)
+    dirichletBC = [None, dir_left, None, dir_right]
+    neumanBC = [q_bottom, None, q_top, None]
 
-# Neumann (horizontal) -> outward normal derivative
-def u_y(x, y):
-    return (np.pi / Lx) * np.sin(np.pi * x / Lx) * np.cosh(np.pi * y / Lx)
+    solver = HeatSolver(dx=dx, sides=[Lx, Ly],
+                        dirichletBC=dirichletBC,
+                        neumanBC=neumanBC)
 
-q_bottom = u_y(x, 0.0)           # ∂u/∂n at y=0
-q_top = u_y(x, Ly)               # ∂u/∂n at y=Ly
+    u_num_flat, sides_data = solver.solve()
+    u_num = u_num_flat.reshape(Ny, Nx)
 
-# ---------------------------------------------------------------------
-# Define BC arrays for solver
-#   Order: [bottom, left, top, right]
-# ---------------------------------------------------------------------
-dirichletBC = [
-    None,              # bottom → Neumann
-    u_left,            # left Dirichlet
-    None,              # top → Neumann
-    u_right            # right Dirichlet
-]
+    # --- Compute error ---
+    error = u_num - u_exact
+    max_err = np.abs(error).max()
+    mean_err = np.abs(error).mean()
+    print("LINEAR VERIFICATION TEST WITH PLOTS")
+    print(f"Max error  : {max_err:.3e}")
+    print(f"Mean error : {mean_err:.3e}")
 
-neumanBC = [
-    q_bottom,          # bottom
-    None,              # left
-    q_top,             # top
-    None               # right
-]
+    # --- Plot numerical solution ---
+    fig, axs = plt.subplots(1, 3, figsize=(18,5))
+    cs1 = axs[0].contourf(X, Y, u_num, 20, cmap='viridis')
+    axs[0].set_title("Numerical solution")
+    fig.colorbar(cs1, ax=axs[0])
 
-# ---------------------------------------------------------------------
-# Build solver and solve
-# ---------------------------------------------------------------------
-solver = HeatSolver(dx=dx, sides=[Lx, Ly],
-                    dirichletBC=dirichletBC,
-                    neumanBC=neumanBC)
+    # Plot exact solution
+    cs2 = axs[1].contourf(X, Y, u_exact, 20, cmap='viridis')
+    axs[1].set_title("Exact solution")
+    fig.colorbar(cs2, ax=axs[1])
 
-u_num_flat, sides = solver.solve(relaxation=1.0)
-u_num = u_num_flat.reshape(Ny, Nx)
+    # Plot error
+    cs3 = axs[2].contourf(X, Y, error, 20, cmap='RdBu')
+    axs[2].set_title("Error (u_num - u_exact)")
+    fig.colorbar(cs3, ax=axs[2])
 
-# ---------------------------------------------------------------------
-# Compare numerical vs. exact
-# ---------------------------------------------------------------------
-error = u_num - u_exact
-max_err = np.abs(error).max()
-mean_err = np.abs(error).mean()
+    for ax in axs:
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_aspect('equal')
 
-print("===== VERIFICATION RESULTS (nonhomogeneous Neumann) =====")
-print(f"Grid: {Nx} x {Ny}  (dx={dx})")
-print(f"Max error  : {max_err:.3e}")
-print(f"Mean error : {mean_err:.3e}")
+    plt.tight_layout()
+    plt.show()
 
-# ---------------------------------------------------------------------
-# Visualization
-# ---------------------------------------------------------------------
-plt.figure(figsize=(11,4))
-plt.subplot(1,2,1)
-plt.title("Numerical solution u_num")
-plt.pcolormesh(X, Y, u_num, shading='auto')
-plt.colorbar(label='u')
+    return solver, u_num, u_exact, error
 
-plt.subplot(1,2,2)
-plt.title("Error = u_num - u_exact")
-plt.pcolormesh(X, Y, error, shading='auto', cmap='coolwarm')
-plt.colorbar(label='Error')
-plt.tight_layout()
-plt.show()
+if __name__ == "__main__":
+    solver, u_num, u_exact, error = run_verification_with_plot(dx=0.05)
