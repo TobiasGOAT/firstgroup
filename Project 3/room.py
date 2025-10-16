@@ -330,7 +330,7 @@ class Room:
 
         self.solver.updateBC(self.D, self.N)
 
-        self.new_u, _ = self.solver.solve(True)
+        self.new_u, _ = self.solver.solve()
         self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
 
 if __name__ == "__main__":

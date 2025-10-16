@@ -36,19 +36,21 @@ class Apartment:
                 "start": 0.0,
                 "end": 1.0,
             }
-            coupling2_1 = {"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0}
+            coupling2_1 = {"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type":"dirichlet"}
             coupling2_3 = {
                 "neighbor": omega3,
                 "side": "right",
                 "start": 1.0,
                 "end": 2.0,
+                "type":"dirichlet"
             }
-            coupling3_2 = {"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0}
+            coupling3_2 = {"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type":"dirichlet"}
             coupling2_4 = {
                 "neighbor": omega4,
                 "side": "right",
                 "start": 0.5,
                 "end": 1.0,
+                "type":"dirichlet"
             }
             coupling4_2 = {
                 "neighbor": omega2,
@@ -62,7 +64,7 @@ class Apartment:
                 "start": 0.0,
                 "end": 0.5,
             }
-            coupling4_3 = {"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5}
+            coupling4_3 = {"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type":"dirichlet"}
             omega1.add_coupling(coupling1_2)
             omega2.add_coupling(coupling2_1)
             omega2.add_coupling(coupling2_3)
@@ -98,7 +100,7 @@ class Apartment:
                 }
             )
             omega2.add_coupling(
-                {"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0}
+                {"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type":"dirichlet"}
             )
             omega2.add_coupling(
                 {
@@ -106,6 +108,7 @@ class Apartment:
                     "side": "right",
                     "start": 1.0,
                     "end": 2.0,
+                    "type":"dirichlet"
                 }
             )
             omega3.add_coupling(
@@ -124,14 +127,13 @@ class Apartment:
     def iterate(self):
         if args.geometry == "default":
             for room, dirichlet in zip(self.rooms, [True, False, True]):
-                room.iterate_room(dirichlet)
+                room.iterate_room()
                 if args.verbose:
                     print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
             return
         elif args.geometry == "alternative":
             for room, dirichlet in zip(self.rooms, [True, False, True, True]):
-                room.iterate_room(dirichlet)
-                room.iterate_room(dirichlet)
+                room.iterate_room()
                 if args.verbose:
                     print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
             return
@@ -174,20 +176,20 @@ class Apartment:
         elif args.geometry == "alternative":
             Nxs = [room.Nx for room in self.rooms]
             Nys = [room.Ny for room in self.rooms]
-            X = sum(Nxs[:-1]) - 2
+            X = sum(Nxs[:-1]) 
             Y = max(Nys)
             array = np.zeros((Y, X))  # advanced plotting going on here
             array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
-            array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += self.rooms[1].u.reshape(
+            array[:, Nxs[0] : Nxs[0] + Nxs[1]] += self.rooms[1].u.reshape(
                 (Nys[1], Nxs[1])
             )
             array[
-                Y - Nys[2] :, Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2]
+                Y - Nys[2] :, Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2]
             ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
-            array[Y-Nys[2]-Nys[3]+1:Y-Nys[2]+1, Nxs[0]+Nxs[1]-2:Nxs[0]+Nxs[1]+Nxs[3]-2]+=self.rooms[3].u.reshape((Nys[3], Nxs[3]))
-            array[: Nys[0], Nxs[0] - 1] /= 2  # average on overlapping nodes
-            array[Y - Nys[2]-Nys[3]+1 :, Nxs[0] + Nxs[1] - 2] /= 2
-            array[Y-Nys[2], Nxs[0]+Nxs[1]-2:]/=2
+            array[Y-Nys[2]-Nys[3]:Y-Nys[2], Nxs[0]+Nxs[1]:Nxs[0]+Nxs[1]+Nxs[3]]+=self.rooms[3].u.reshape((Nys[3], Nxs[3]))
+            #array[: Nys[0], Nxs[0] - 1] /= 2  # average on overlapping nodes
+            #array[Y - Nys[2]-Nys[3]+1 :, Nxs[0] + Nxs[1] - 2] /= 2
+            #array[Y-Nys[2], Nxs[0]+Nxs[1]-2:]/=2
             plt.imshow(array, aspect=1, origin="lower")
             plt.colorbar()
             print(self.rooms[3].u.reshape((Nys[3], Nxs[3])))
