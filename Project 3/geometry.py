@@ -140,14 +140,15 @@ class Apartment:
             X = sum(Nxs)
             Y = max(Nys)
             array = np.zeros((Y, X))  # advanced plotting going on here
-            array[Y - Nys[0] :, : Nxs[0]] = self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+            array[:Nys[0], : Nxs[0]] = self.rooms[0].u.reshape((Nys[0], Nxs[0]))
             array[:, Nxs[0] : Nxs[0] + Nxs[1]] = self.rooms[1].u.reshape(
                 (Nys[1], Nxs[1])
             )
-            array[: Nys[2], Nxs[0] + Nxs[1] :] = self.rooms[
+            array[Y-Nys[2]:, Nxs[0] + Nxs[1] :] = self.rooms[
                 2
             ].u.reshape((Nys[2], Nxs[2]))
-            plt.imshow(array, aspect=1)
+            eps=args.dx/2
+            plt.imshow(array, aspect=1, origin="lower", extent=[-eps, sum(room.Lx for room in self.rooms)+eps, -eps,eps+ max([room.Ly for room in self.rooms])])
             plt.colorbar()
 
             plt.show()
