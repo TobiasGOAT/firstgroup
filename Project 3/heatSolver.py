@@ -208,8 +208,8 @@ class HeatSolver:
         for s in range(4):
             u_bd = u[self.ranges[0][s]]
             u_in = u[self.ranges[1][s]]
-            neumanns.append((u_in - u_bd) / self.dx)
-            dirichlets.append(u[self.ranges[0][s]])
+            neumanns.append(relaxation*(u_in - u_bd) / self.dx)
+            dirichlets.append(relaxation*u[self.ranges[0][s]])
         # if dirElseNeu:
         #     for s in range(4):           #Dirichlet traces (values on the boundary)
         #         sideValues.append(u[self.ranges[0][s]])

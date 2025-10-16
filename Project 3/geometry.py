@@ -124,7 +124,7 @@ class Apartment:
     def iterate(self):
         if args.geometry=="default":
             for room, dirichlet in zip(self.rooms, [True, False, True]):
-                room.iterate_room(dirichlet)
+                room.iterate_room(not dirichlet)
                 if args.verbose:
                     print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
             return
@@ -137,16 +137,18 @@ class Apartment:
         if args.geometry == "default":
             Nxs = [room.Nx for room in self.rooms]
             Nys = [room.Ny for room in self.rooms]
-            X = sum(Nxs)
+            X = sum(Nxs)-2
             Y = max(Nys)
             array = np.zeros((Y, X))  # advanced plotting going on here
-            array[:Nys[0], : Nxs[0]] = self.rooms[0].u.reshape((Nys[0], Nxs[0]))
-            array[:, Nxs[0] : Nxs[0] + Nxs[1]] = self.rooms[1].u.reshape(
+            array[:Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+            array[:, Nxs[0] -1: Nxs[0] + Nxs[1]-1] += self.rooms[1].u.reshape(
                 (Nys[1], Nxs[1])
             )
-            array[Y-Nys[2]:, Nxs[0] + Nxs[1] :] = self.rooms[
+            array[Y-Nys[2]:, Nxs[0]-2 + Nxs[1] :Nxs[0]-2 + Nxs[1]+Nxs[2]] += self.rooms[
                 2
             ].u.reshape((Nys[2], Nxs[2]))
+            array[:Nys[0], Nxs[0]-1]/=2 #average on overlapping nodes
+            array[Y-Nys[2]:, Nxs[0]+Nxs[1]-2]/=2
             eps=args.dx/2
             plt.imshow(array, aspect=1, origin="lower", extent=[-eps, sum(room.Lx for room in self.rooms)+eps, -eps,eps+ max([room.Ly for room in self.rooms])])
             plt.colorbar()
