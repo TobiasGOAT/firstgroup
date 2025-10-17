@@ -54,7 +54,7 @@ sideValues : list of 1D ndarrays (length 4, order: [bottom, left, top, right])
                            (u_inner - u_boundary)/dx  (aligned with outward normal).
     Lengths are Nx for bottom/top and Ny for left/right.
 """
-
+from cli_parser import args
 class HeatSolver:
     def __init__(self, dx, sides, dirichletBC, neumanBC):
         """
@@ -227,7 +227,9 @@ class HeatSolver:
             sides : dict with lists for 'dirichlet' and 'neumann'
         """
         u = sp.linalg.spsolve(self.K, self.b).ravel()
-
+        if args.kmat:
+            print("K-matrix from solver:")
+            print(self.K.todense())
         neumanns = []
         dirichlets = []
         for s in range(4):

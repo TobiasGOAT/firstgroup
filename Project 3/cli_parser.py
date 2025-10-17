@@ -11,6 +11,7 @@ def get_args():
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="increase output verbosity"
     )
+    parser.add_argument("-k", "--kmat", action="store_true", help="print K matrix")
     parser.add_argument("-s", "--save", action="store_true", help="save plot of result")
     parser.add_argument(
         "geometry",
@@ -65,6 +66,8 @@ def get_args():
         args.dx = 1 / 20
     elif args.verbose:
         print(f"Running script with dx={args.dx}")
+    if args.geometry not in ["default", "alternative"]:
+        raise NotImplementedError("")
     return args
 
 
