@@ -132,11 +132,13 @@ class HeatSolver:
         main = -4.0 * np.ones(self.K_size)
         lr = np.ones(self.K_size - 1)
         # prevent wrap-around between rows for left/right neighbors
+        #+1/-1  -> left/right neighbors in row-major layout
+        #+Nx/-Nx-> up/down neighbors one full row away
         lr[np.arange(1, self.N_y) * self.N_x - 1] = 0.0
         ud = np.ones(self.K_size - self.N_x)
         K = sp.diags(
             diagonals=[main, lr, lr, ud, ud],
-            offsets=[0, 1, -1, self.N_x, -self.N_x],
+            offsets=[0, 1, -1, self.N_x, -self.N_x],  
             format='lil'
         )
 
