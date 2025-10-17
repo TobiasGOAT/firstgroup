@@ -11,6 +11,7 @@ def get_args():
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="increase output verbosity"
     )
+    parser.add_argument("-s", "--save", action="store_true", help="save plot of result")
     parser.add_argument(
         "geometry",
         nargs="?",

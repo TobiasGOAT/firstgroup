@@ -8,6 +8,7 @@ from geometry import Apartment
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from cli_parser import args
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -19,12 +20,12 @@ if size != 3:
     exit()
 
 # --- Geometry and setup ---
-apt = Apartment(layout="default", dx=1/20)
+apt = Apartment(layout=args.geometry, dx=args.dx)
 rooms = apt.rooms
 my_room = rooms[rank]
 
 relax = 0.8
-max_iter = 20
+max_iter = args.iterations
 tol = 1e-3
 
 for it in range(max_iter):
@@ -67,7 +68,7 @@ for it in range(max_iter):
     # --- Check convergence ---
     local_res = np.max(np.abs(my_room.u - new_u))
     res = comm.allreduce(local_res, op=MPI.MAX)
-    if rank == 0 and it % 2 == 0:
+    if rank == 0 and it % 2 == 0 and args.verbose:
         print(f"Iteration {it:2d} | Global residual = {res:.3e}")
     if res < tol:
         if rank == 0:
@@ -85,7 +86,8 @@ Nx_data = comm.gather(my_room.Nx, root=0)
 Ny_data = comm.gather(my_room.Ny, root=0)
 
 if rank == 0:
-    print("\n Gathering completed. Plotting global temperature field...")
+    if args.verbose:
+        print("\n Gathering completed. Plotting global temperature field...")
 
     # unpack sizes
     Ny0, Ny1, Ny2 = Ny_data[0], Ny_data[1], Ny_data[2]
@@ -123,28 +125,34 @@ if rank == 0:
     full[Y - Ny2:, border_R] = 0.5 * (u2[Y - Ny2:, -1] + u3[:, 0])
 
     # --- Save and plot  ---
-    os.makedirs("results", exist_ok=True)
-    out_path = os.path.join("results", "temperature_field.png")
+    if args.save:
+        os.makedirs("results", exist_ok=True)
+        out_path = os.path.join("results", "temperature_field.png")
 
     # unified axes and colormap/range
     Lx, Ly = 3.0, 2.0
     VMIN, VMAX = 0.0, 40.0
     CMAP = "viridis"
-
-    plt.figure(figsize=(8, 4.5))
-    plt.imshow(
-        full,
-        origin="lower",
-        extent=[0, Lx, 0, Ly], 
-        aspect="equal",
-        cmap=CMAP, vmin=VMIN, vmax=VMAX,
-        interpolation="bilinear"  # nearest
-    )
-    cbar = plt.colorbar()
-    cbar.set_label("Temperature (°C)")
-    plt.xlabel("x"); plt.ylabel("y")
-    plt.title("MPI Heat Distribution")
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=150)
-    plt.close()
-    print(f" Figure saved to {out_path}")
+    if args.save or args.plot:
+        plt.figure(figsize=(8, 4.5))
+        plt.imshow(
+            full,
+            origin="lower",
+            extent=[0, Lx, 0, Ly], 
+            aspect="equal",
+            cmap=CMAP, vmin=VMIN, vmax=VMAX,
+            interpolation="bilinear"  # nearest
+        )
+        cbar = plt.colorbar()
+        cbar.set_label("Temperature (°C)")
+        plt.xlabel("x"); plt.ylabel("y")
+        plt.title("MPI Heat Distribution")
+        plt.tight_layout()
+    if args.save:
+        plt.savefig(out_path, dpi=150)
+        if args.verbose:
+            print(f" Figure saved to {out_path}")
+            plt.close()
+    if args.plot:
+        plt.show()
+    
