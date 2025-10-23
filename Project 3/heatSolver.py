@@ -199,12 +199,22 @@ class HeatSolver:
                 K.data[i] = [1.0]
                 b[i]      = float(val)
 
+    def _calcNeumanFlux(self,u):
+        flux = np.zeros(4)
+        for i in range(4):
+            flux[i] = (u( self.ranges[1][1] ) - u( self.ranges[2][1] ) ) / self.dx
+
+        return flux
+
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
 
-    def updateBC(self,dirichletBC,neumanBC):
+    def updateBC(self,dirichletBC,neumanBC,u=None):
         #If DBC or NBC should not be uppdated, set them as None
+
+        if u !=  None:
+            neumanBC = self._calcNeumanFlux(u)
 
         if dirichletBC == None:
             dirichletBC = self.dirichletBC
