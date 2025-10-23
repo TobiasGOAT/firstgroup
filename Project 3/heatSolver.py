@@ -127,6 +127,13 @@ class HeatSolver:
             "right":  (right,  right_in),
         }    
 
+        self.sideToSign = {
+                "bottom": +1.0,  # u_bd = u_inner + dx * q_bottom
+                "top":    -1.0,  # u_bd = u_inner - dx * q_top
+                "left":   +1.0,  # u_bd = u_inner + dx * q_left
+                "right":  -1.0   # u_bd = u_inner - dx * q_right
+            }
+
     def _construct(self,dirichletBC,neumanBC):
         """Unscaled 5-point Laplacian in LIL format (row-major flattening)."""
         main = -4.0 * np.ones(self.K_size)
@@ -174,12 +181,7 @@ class HeatSolver:
 
             # Explicitly set sign and formula per side
             # formula: u_bd = u_inner + sign * dx * g
-            side_sign = {
-                "bottom": +1.0,  # u_bd = u_inner + dx * q_bottom
-                "top":    -1.0,  # u_bd = u_inner - dx * q_top
-                "left":   +1.0,  # u_bd = u_inner + dx * q_left
-                "right":  -1.0   # u_bd = u_inner - dx * q_right
-            }[sideName]
+            side_sign = self.sideToSign[sideName]
 
             for i, g in zip(boundary_indices, NBCList):
                 inner = self._bd_to_inner[i]
@@ -200,9 +202,11 @@ class HeatSolver:
                 b[i]      = float(val)
 
     def _calcNeumanFlux(self,u):
-        flux = np.zeros(4)
-        for i in range(4):
-            flux[i] = (u( self.ranges[1][1] ) - u( self.ranges[2][1] ) ) / self.dx
+        flux = []
+        index = 0
+        for side in ("bottom", "left", "top", "right"):
+            flux.append( self.sideToSign[side] * (u[ self.range_map[side][0] ] - u[ self.range_map[side][1] ] ) / self.dx )
+            index += 1
 
         return flux
 
@@ -213,7 +217,7 @@ class HeatSolver:
     def updateBC(self,dirichletBC,neumanBC,u=None):
         #If DBC or NBC should not be uppdated, set them as None
 
-        if u !=  None:
+        if u is not None and np.any(u != 0):
             neumanBC = self._calcNeumanFlux(u)
 
         if dirichletBC == None:

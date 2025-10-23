@@ -221,7 +221,7 @@ class Room:
             self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
         self.D[Room.walls_order[coupling["side"]]] = None  # Remove Dirichlet BC for this side
 
-        self.solver.updateBC(self.D, self.N)
+        self.solver.updateBC(self.D, self.N,self.u)
 
         self.neighbors.append(coupling)
 
@@ -337,7 +337,7 @@ class Room:
                 full_boundary_values = self.create_full_boundary_array(neumann_boundary, side, my_start, my_end)
                 self.N[Room.walls_order[side]] = full_boundary_values
 
-        self.solver.updateBC(self.D, self.N)
+        self.solver.updateBC(self.D, self.N,self.u)
 
         self.new_u, _ = self.solver.solve()
         self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
