@@ -30,41 +30,13 @@ class Apartment:
             )
             if args.verbose:
                 print(dim("Successfully created room 'Omega_4'"))
-            coupling1_2 = {
-                "neighbor": omega2,
-                "side": "right",
-                "start": 0.0,
-                "end": 1.0,
-            }
+            coupling1_2 = {"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0}
             coupling2_1 = {"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type":"dirichlet"}
-            coupling2_3 = {
-                "neighbor": omega3,
-                "side": "right",
-                "start": 1.0,
-                "end": 2.0,
-                "type":"dirichlet"
-            }
+            coupling2_3 = {"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0, "type": "dirichlet"}
             coupling3_2 = {"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0}
-            coupling2_4 = {
-                "neighbor": omega4,
-                "side": "right",
-                "start": 0.5,
-                "end": 1.0,
-                "type":"dirichlet"
-            }
-            coupling4_2 = {
-                "neighbor": omega2,
-                "side": "right",
-                "start": 0.0,
-                "end": 0.5,
-                "type":"dirichlet"
-            }
-            coupling3_4 = {
-                "neighbor": omega4,
-                "side": "bottom",
-                "start": 0.0,
-                "end": 0.5,
-            }
+            coupling2_4 = {"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"}
+            coupling4_2 = {"neighbor": omega2, "side": "right", "start": 0.0, "end": 0.5, "type": "dirichlet"}
+            coupling3_4 = {"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5}
             coupling4_3 = {"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type":"dirichlet"}
             omega1.add_coupling(coupling1_2)
             omega2.add_coupling(coupling2_1)

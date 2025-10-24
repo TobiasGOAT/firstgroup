@@ -246,8 +246,6 @@ class Room:
         if side not in valid_sides:
             raise ValueError(f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}.")
 
-        
-
         full_boundary = self.side_to_indices[side]
         full_length = self.Lx if side in {"bottom", "top"} else self.Ly
         n = len(full_boundary)
@@ -273,7 +271,7 @@ class Room:
 
     def generate_boundary_masks(self):
         for side in Room.walls_order.keys():
-            mask = [False] * (self.Nx if side in {"bottom", "top"} else self.Ny)
+            mask = np.zeros((self.Nx if side in {"bottom", "top"} else self.Ny,), dtype=bool)
             for neighbor in self.neighbors:
                 if side != neighbor["side"]:
                     continue
@@ -313,7 +311,7 @@ class Room:
             neighbor = coupling["neighbor"]
             side = coupling["side"]
             my_start = coupling["start"]
-            my_end = coupling.get("end")
+            my_end = coupling["end"]
             their_start, their_end = neighbor.give_border_start_and_end(self)
 
 
@@ -328,14 +326,11 @@ class Room:
 
             #border_values = self.get_boundary_value(side, my_start, my_end)
             # Update the Neumann BC for this side based on the neighbor's values
+            values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
             if coupling["type"] == "dirichlet":
-                full_boundary_values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
-                self.D[Room.walls_order[side]] = full_boundary_values
+                self.D[Room.walls_order[side]] = values
             else:
-                #neumann_boundary = (np.array(neighbor_values) - np.array(border_values)) / self.dx
-                neumann_boundary = -np.array(neighbor_values)
-                full_boundary_values = self.create_full_boundary_array(neumann_boundary, side, my_start, my_end)
-                self.N[Room.walls_order[side]] = full_boundary_values
+                self.N[Room.walls_order[side]] = values
 
         self.solver.updateBC(self.D, self.N,self.u)
 
@@ -345,17 +340,17 @@ class Room:
 if __name__ == "__main__":
     four = True  
 
-    omega1 = Room("Omega 1", 0.01, (1.0, 1.0), heater_sides=["left"])
-    omega2 = Room("Omega 2", 0.01, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
-    omega3 = Room("Omega 3", 0.01, (1.0, 1.0), heater_sides=["right"])
-    omega4 = Room("Omega 4", 0.01, (0.5, 0.5), heater_sides=["bottom"]) if four else None
+    omega1 = Room("Omega 1", 0.1, (1.0, 1.0), heater_sides=["left"])
+    omega2 = Room("Omega 2", 0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
+    omega3 = Room("Omega 3", 0.1, (1.0, 1.0), heater_sides=["right"])
+    omega4 = Room("Omega 4", 0.1, (0.5, 0.5), heater_sides=["bottom"]) if four else None
 
     omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0, "type": "neumann"})
     omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type": "dirichlet"})
     omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0, "type": "dirichlet"})
     omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"}) if four else None
     omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type": "neumann"})
-    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "dirichlet"}) if four else None
     omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
     omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
 
@@ -371,21 +366,49 @@ if __name__ == "__main__":
     print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
     print("Room 4 Temperature Distribution:\n", omega4.u.reshape((omega4.Ny, omega4.Nx))) if four else None
 
-    #plotting
+    # plotting: compose a single image that places the rooms according to the apartment layout
     import matplotlib.pyplot as plt
+    import numpy as _np
 
-    fig, axs = plt.subplots(1, 4, figsize=(15, 5))
-    im1 = axs[0].imshow(omega1.u.reshape((omega1.Ny, omega1.Nx)), cmap='hot', origin='lower', extent=[0, omega1.Lx, 0, omega1.Ly])
-    axs[0].set_title('Room 1 Temperature Distribution')
-    fig.colorbar(im1, ax=axs[0])
-    im2 = axs[1].imshow(omega2.u.reshape((omega2.Ny, omega2.Nx)), cmap='hot', origin='lower', extent=[0, omega2.Lx, 0, omega2.Ly])
-    axs[1].set_title('Room 2 Temperature Distribution')
-    fig.colorbar(im2, ax=axs[1])
-    im3 = axs[2].imshow(omega3.u.reshape((omega3.Ny, omega3.Nx)), cmap='hot', origin='lower', extent=[0, omega3.Lx, 0, omega3.Ly])
-    axs[2].set_title('Room 3 Temperature Distribution')
-    fig.colorbar(im3, ax=axs[2])
-    im4 = axs[3].imshow(omega4.u.reshape((omega4.Ny, omega4.Nx)), cmap='hot', origin='lower', extent=[0, omega4.Lx, 0, omega4.Ly]) if four else None
-    axs[3].set_title('Room 4 Temperature Distribution') if four else None
-    fig.colorbar(im4, ax=axs[3]) if four else None
-    plt.tight_layout()
-    plt.show()
+    if four:
+        # follow the same composition logic as in geometry.py (alternative layout)
+        rooms = [omega1, omega2, omega3, omega4]
+        Nxs = [r.Nx for r in rooms]
+        Nys = [r.Ny for r in rooms]
+        # total image width: place omega1, omega2, omega3 horizontally (omega4 sits under omega3)
+        X = sum(Nxs[:-1])
+        Y = max(Nys)
+        array = _np.zeros((Y, X))
+        # Omega1 at left bottom
+        array[: Nys[0], : Nxs[0]] += omega1.u.reshape((Nys[0], Nxs[0]))
+        # Omega2 in center (spans full height)
+        array[:, Nxs[0] : Nxs[0] + Nxs[1]] += omega2.u.reshape((Nys[1], Nxs[1]))
+        # Omega3 at top-right
+        array[Y - Nys[2] :, Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2]] += omega3.u.reshape((Nys[2], Nxs[2]))
+        # Omega4 below Omega3
+        array[Y - Nys[2] - Nys[3] : Y - Nys[2], Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[3]] += omega4.u.reshape((Nys[3], Nxs[3]))
+
+        plt.figure(figsize=(6, 6))
+        plt.imshow(array, aspect=1, origin='lower')
+        plt.title('Composite apartment temperature (4 rooms)')
+        plt.colorbar()
+        plt.show()
+    else:
+        # default 3-room layout (same composition as geometry.py default)
+        rooms = [omega1, omega2, omega3]
+        Nxs = [r.Nx for r in rooms]
+        Nys = [r.Ny for r in rooms]
+        X = sum(Nxs) - 2
+        Y = max(Nys)
+        array = _np.zeros((Y, X))
+        array[: Nys[0], : Nxs[0]] += omega1.u.reshape((Nys[0], Nxs[0]))
+        array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += omega2.u.reshape((Nys[1], Nxs[1]))
+        array[Y - Nys[2] :, Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2]] += omega3.u.reshape((Nys[2], Nxs[2]))
+        array[: Nys[0], Nxs[0] - 1] /= 2
+        array[Y - Nys[2] :, Nxs[0] + Nxs[1] - 2] /= 2
+
+        plt.figure(figsize=(6, 4))
+        plt.imshow(array, aspect=1, origin='lower', extent=[0, sum(r.Lx for r in rooms), 0, max(r.Ly for r in rooms)])
+        plt.title('Composite apartment temperature (3 rooms)')
+        plt.colorbar()
+        plt.show()
