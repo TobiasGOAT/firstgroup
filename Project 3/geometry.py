@@ -283,93 +283,48 @@ class Apartment:
             return
 
         elif args.geometry == "alternative":
-            # -----------------------------------------------------------------
-            # Physical layout for the 4-room ("alternative"/project3a) case:
-            #
-            #   Omega1 (Ω1): x ∈ [0,1],   y ∈ [0,1]         size 1 x 1
-            #   Omega2 (Ω2): x ∈ [1,2],   y ∈ [0,2]         size 1 x 2 (tall hall)
-            #   Omega3 (Ω3): x ∈ [2,3],   y ∈ [1,2]         size 1 x 1 (top-right)
-            #   Omega4 (Ω4): x ∈ [2,2.5], y ∈ [0.5,1.0]     size 0.5 x 0.5 (small nook)
-            #
-            # NOTE:
-            # - All rooms share the same dx.
-            # - We build a unified grid covering x ∈ [0,3], y ∈ [0,2].
-            # - We drop duplicate rows/cols on shared interfaces by averaging.
-            # -----------------------------------------------------------------
-
-            # unpack for readability
             omega1, omega2, omega3, omega4 = self.rooms
 
             dx = args.dx
 
-            # global physical domain spans 0 ≤ x ≤ 3, 0 ≤ y ≤ 2
             Lx_total = 3.0
             Ly_total = 2.0
 
-            # number of nodes in global grid
-            # each local room uses Nx = Lx/dx + 1, Ny = Ly/dx + 1
             Nx_global = int(round(Lx_total / dx)) + 1   # columns
             Ny_global = int(round(Ly_total / dx)) + 1   # rows
 
             global_array = np.full((Ny_global, Nx_global), np.nan)
 
-            # helper to place a room field u into global_array using physical extents
+            #helper to place a room field u into global_array using physical extents
             def place_room(u_vec, room, x0, x1, y0, y1, average=True):
-                """
-                u_vec: flat solution array from the room (length room.Nx * room.Ny)
-                room: the Room object (for Nx, Ny)
-                [x0,x1]x[y0,y1]: physical extent of this room in meters
-                average: if True, average where overlap already exists
-                """
                 u_local = u_vec.reshape((room.Ny, room.Nx))  # (Ny rows, Nx cols)
 
-                # compute index ranges in the global grid
-                # IMPORTANT:
-                # y increases upward physically, but numpy row index increases downward.
-                # our arrays are stored origin="lower" when plotting,
-                # and your room.u is already built with origin "lower".
-                # So we map y directly bottom->top to row indices bottom->top.
 
-                # convert physical coords to index ranges
                 ix0 = int(round(x0 / dx))
-                ix1 = int(round(x1 / dx))  # inclusive end in physical is exclusive in slicing
+                ix1 = int(round(x1 / dx))  #inclusive end in physical is exclusive in slicing
 
                 iy0 = int(round(y0 / dx))
                 iy1 = int(round(y1 / dx))
 
-                # dimensions sanity
-                # local Nx should match ix1-ix0
-                # local Ny should match iy1-iy0
-                # because Nx = Lx/dx + 1, and ix1-ix0 should equal that
-                # slight off-by-one may happen if we don't align shared boundaries carefully.
-                # We'll clamp to fit.
-                sub_Nx = ix1 - ix0 + 1  # naive inclusive interpretation
+                sub_Nx = ix1 - ix0 + 1
                 sub_Ny = iy1 - iy0 + 1
-
-                # We actually want half-open slices [ix0:ix1+1], [iy0:iy1+1]
-                # But to stay consistent with node sharing,
-                # we take the raw room grid directly:
                 tgt_x_slice = slice(ix0, ix0 + room.Nx)
                 tgt_y_slice = slice(iy0, iy0 + room.Ny)
 
-                # grow global array there if first write or average if overlap
                 existing = global_array[tgt_y_slice, tgt_x_slice]
 
                 if average and np.any(~np.isnan(existing)):
-                    # where there's already data, average
-                    mask_new = np.isnan(existing)
-                    # fill untouched spots first
-                    existing[mask_new] = u_local[mask_new]
-                    # average where both exist
-                    both_mask = ~mask_new
+
+                    mask_new = np.isnan(existing)   #where there's already data, average
+
+                    existing[mask_new] = u_local[mask_new]  #fill untouched spots first
+
+                    both_mask = ~mask_new        # average where both exist
                     existing[both_mask] = 0.5 * (existing[both_mask] + u_local[both_mask])
                     global_array[tgt_y_slice, tgt_x_slice] = existing
                 else:
                     global_array[tgt_y_slice, tgt_x_slice] = u_local
-
-            # --- place each room using the physical extents defined above ---
-
-            # Ω1: [0,1] x [0,1]
+            #Ω1
             place_room(
                 omega1.u,
                 omega1,
@@ -377,7 +332,7 @@ class Apartment:
                 y0=0.0, y1=1.0,
             )
 
-            # Ω2: [1,2] x [0,2]
+            #Ω2:
             place_room(
                 omega2.u,
                 omega2,
@@ -385,7 +340,7 @@ class Apartment:
                 y0=0.0, y1=2.0,
             )
 
-            # Ω3: [2,3] x [1,2]
+            #Ω3:
             place_room(
                 omega3.u,
                 omega3,
@@ -393,17 +348,13 @@ class Apartment:
                 y0=1.0, y1=2.0,
             )
 
-            # Ω4: [2.0,2.5] x [0.5,1.0]
+            #Ω4:
             place_room(
                 omega4.u,
                 omega4,
                 x0=2.0, x1=2.5,
                 y0=0.5, y1=1.0,
             )
-
-            # now plot the assembled field.
-            # Some cells in global_array might still be NaN where no room exists.
-            # We'll set those to a neutral background (e.g. 15°C) just for visualization.
             nan_mask = np.isnan(global_array)
             if np.any(nan_mask):
                 global_array[nan_mask] = 15.0  # neutral interior-ish temp
