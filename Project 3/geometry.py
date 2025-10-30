@@ -6,56 +6,29 @@ from cli_helpers import *
 class Apartment:
     def __init__(self, layout="default", dx=1 / 20):
         """
-        Build the apartment geometry and define how rooms are coupled.
+        Build the apartment layout and define subdomain coupling.
 
         layout = "default":
-            Omega1 (1x1) on top-left
-            Omega2 (1x2) tall in the middle
-            Omega3 (1x1) bottom-right
-
-            Geometry picture (y up):
-                Omega1 | (top half of Omega2)
-                       |
-                -------+---------
-                       | (bottom half of Omega2) | Omega3
-
-            Important: Omega1 only touches the TOP HALF of Omega2's left wall.
-                       Omega3 only touches the BOTTOM HALF of Omega2's right wall.
+            omega1 1x1 (top-left),
+            omega2 1x2 (tall middle),
+            omega3 1x1 (bottom-right).
 
         layout = "alternative":
-            Omega1, Omega2, Omega3 like above + Omega4 (1/2 x 1/2 "small room").
-            This is the extended problem (3a).
+            same omega1/omega2/omega3,
+            plus omega4 0.5x0.5 attached above omega3 on the right side.
         """
 
         if layout == "alternative":
-            # --- Create rooms -------------------------------------------------
-            omega1 = Room(
-                "",
-                dx=dx,
-                shape=(1, 1),
-                heater_sides=["left"],
-                window_sides=[],
-            )
+            # create rooms
+            omega1 = Room("", dx=dx, shape=(1, 1), heater_sides=["left"], window_sides=[])
             if args.verbose:
                 print(dim("Successfully created room 'Omega_1'"))
 
-            omega2 = Room(
-                "",
-                dx=dx,
-                shape=(1, 2),
-                heater_sides=["top"],
-                window_sides=["bottom"],
-            )
+            omega2 = Room("", dx=dx, shape=(1, 2), heater_sides=["top"], window_sides=["bottom"])
             if args.verbose:
                 print(dim("Successfully created room 'Omega_2'"))
 
-            omega3 = Room(
-                "",
-                dx=dx,
-                shape=(1, 1),
-                heater_sides=["right"],
-                window_sides=[],
-            )
+            omega3 = Room("", dx=dx, shape=(1, 1), heater_sides=["right"], window_sides=[])
             if args.verbose:
                 print(dim("Successfully created room 'Omega_3'"))
 
@@ -69,8 +42,23 @@ class Apartment:
             if args.verbose:
                 print(dim("Successfully created room 'Omega_4'"))
 
-            # --- Couplings for the "alternative" layout ----------------------
-            #NOTE: we haven't audited these segments yet in detail.
+            """
+            alternative layout geometry (project3a):
+              omega1: bottom-left  (1x1)
+              omega2: tall middle  (1x2)
+              omega3: top-right    (1x1)
+              omega4: lower-right small (0.5x0.5), tucked below-left of omega3
+
+            interfaces (in physical y-coordinates of omega2, height=2.0):
+              - omega1 ↔ omega2.left  on y ∈ [0.0, 1.0]   (bottom half)
+              - omega3 ↔ omega2.right on y ∈ [1.0, 2.0]   (top half)
+              - omega4 ↔ omega2.right on y ∈ [0.5, 1.0]   (middle band)
+
+            and:
+              - omega4.top touches the LEFT HALF of omega3.bottom.
+            """
+
+            # omega1 <-> omega2
             coupling1_2 = {
                 "neighbor": omega2,
                 "side": "right",
@@ -85,6 +73,7 @@ class Apartment:
                 "type": "dirichlet",
             }
 
+            # omega2 <-> omega3 (top half of omega2.right)
             coupling2_3 = {
                 "neighbor": omega3,
                 "side": "right",
@@ -99,6 +88,7 @@ class Apartment:
                 "end": 1.0,
             }
 
+            # omega2 <-> omega4 (middle band of omega2.right, y in [0.5,1.0])
             coupling2_4 = {
                 "neighbor": omega4,
                 "side": "right",
@@ -108,26 +98,29 @@ class Apartment:
             }
             coupling4_2 = {
                 "neighbor": omega2,
-                "side": "right",
+                "side": "left",
                 "start": 0.0,
                 "end": 0.5,
+                # default (no "type") => Neumann for omega4
             }
 
+            # omega3 <-> omega4 (omega3.bottom left half ↔ omega4.top full)
             coupling3_4 = {
                 "neighbor": omega4,
                 "side": "bottom",
                 "start": 0.0,
                 "end": 0.5,
-                "type":"dirichlet"
+                # Neumann for omega3
             }
             coupling4_3 = {
                 "neighbor": omega3,
                 "side": "top",
                 "start": 0.0,
-                "end": 0.5,
+                "end": 1.0,
+                "type": "dirichlet",
             }
 
-            # Attach couplings to rooms
+            # attach couplings
             omega1.add_coupling(coupling1_2)
             omega2.add_coupling(coupling2_1)
             omega2.add_coupling(coupling2_3)
@@ -138,195 +131,140 @@ class Apartment:
             omega4.add_coupling(coupling4_3)
 
             if args.verbose:
-                print(dim("Successfully coupled all rooms"))
-
-            #Register rooms in order
+                print(dim("Successfully coupled all rooms (alternative)"))
             self.rooms = [omega1, omega2, omega3, omega4]
-
             if args.verbose:
-                self.names = {}
-                for i in range(4):
-                    self.names[self.rooms[i]] = f"Omega_{i+1}"
+                self.names = {
+                    omega1: "Omega_1",
+                    omega2: "Omega_2",
+                    omega3: "Omega_3",
+                    omega4: "Omega_4",
+                }
+
 
         elif layout == "default":
-            # --- Create rooms ----------------------------
-            omega1 = Room(
-                "",
-                dx,
-                shape=(1, 1),
-                heater_sides=["left"],
-                window_sides=[],
-            )
+            # --- create rooms ------------------------------------------------
+            omega1 = Room("", dx, shape=(1, 1), heater_sides=["left"], window_sides=[])
             if args.verbose:
                 print(dim("Successfully created room 'Omega_1'"))
 
-            omega2 = Room(
-                "",
-                dx,
-                (1, 2),
-                heater_sides=["top"],
-                window_sides=["bottom"],
-            )
+            omega2 = Room("", dx, (1, 2), heater_sides=["top"], window_sides=["bottom"])
             if args.verbose:
                 print(dim("Successfully created room 'Omega_2'"))
 
-            omega3 = Room(
-                "",
-                dx,
-                shape=(1, 1),
-                heater_sides=["right"],
-                window_sides=[],
-            )
+            omega3 = Room("", dx, shape=(1, 1), heater_sides=["right"], window_sides=[])
             if args.verbose:
                 print(dim("Successfully created room 'Omega_3'"))
 
-            # --- Couplings for the "default" layout --------------------------
             """
-                GEOMETRY / INTERFACE MAP (very important)
-                Room sizes:
-                    omega1: 1 x 1
-                    omega2: 1 x 2   (tall, spans both top and bottom)
-                    omega3: 1 x 1
+            GEOMETRY for 'default':
 
-                Contact logic:
-                    - omega1 only touches the TOP HALF of omega2's LEFT wall
-                    - omega3 only touches the BOTTOM HALF of omega2's RIGHT wall
+            omega1 (1x1) touches TOP HALF of omega2.left
+            omega3 (1x1) touches BOTTOM HALF of omega2.right
+            omega2 is tall (1x2)
 
-                Coordinate convention for start/end:
-                    For vertical walls ("left" / "right"), start/end are measured
-                    from bottom→top along that wall in *physical length units*.
+            So:
+              omega2.left  with omega1 -> y in [1.0, 2.0]
+              omega2.right with omega3 -> y in [0.0, 1.0]
+            """
 
-                    omega2 has total height Ly = 2.0, so:
-                        y in [0.0, 1.0] = bottom half of omega2
-                        y in [1.0, 2.0] = top half of omega2
+            # omega1 ↔ omega2
+            omega1.add_coupling({
+                "neighbor": omega2,
+                "side": "right",
+                "start": 0.0,
+                "end": 1.0,
+            })
+            omega2.add_coupling({
+                "neighbor": omega1,
+                "side": "left",
+                "start": 1.0,
+                "end": 2.0,
+                "type": "dirichlet",
+            })
 
-                Bug we had:
-                    The omega1–omega2 interface looked wrong (discontinuous),
-                    while omega2–omega3 looked ok. That happened because we were
-                    assigning the wrong half of omega2's wall to the wrong neighbor.
-
-                Correct coupling (what we enforce below):
-                    - omega2.left  with omega1 -> use [1.0, 2.0]  (TOP half)
-                    - omega2.right with omega3 -> use [0.0, 1.0]  (BOTTOM half)
-                """
-            omega1.add_coupling(
-                {
-                    "neighbor": omega2,
-                    "side": "right",
-                    "start": 0.0,
-                    "end": 1.0,
-                }
-            )
-            omega2.add_coupling(
-                {
-                    "neighbor": omega1,
-                    "side": "left",
-                    "start": 0.0,  # top half of omega2: y ∈ [1.0, 2.0]
-                    "end": 1.0,
-                    "type": "dirichlet",
-                }
-            )
-
-            # omega2 → omega3
-            # omega3 sits against the BOTTOM HALF of omega2's right wall
-            omega2.add_coupling(
-                {
-                    "neighbor": omega3,
-                    "side": "right",
-                    "start": 1.0,  # bottom half of omega2: y ∈ [0.0, 1.0]
-                    "end": 2.0,
-                    "type": "dirichlet",
-                }
-            )
-
-            # omega3 → omega2
-            omega3.add_coupling(
-                {
-                    "neighbor": omega2,
-                    "side": "left",
-                    "start": 0.0,
-                    "end": 1.0,
-                }
-            )
+            # omega2 ↔ omega3
+            omega2.add_coupling({
+                "neighbor": omega3,
+                "side": "right",
+                "start": 0.0,
+                "end": 1.0,
+                "type": "dirichlet",
+            })
+            omega3.add_coupling({
+                "neighbor": omega2,
+                "side": "left",
+                "start": 0.0,
+                "end": 1.0,
+            })
 
             if args.verbose:
-                print(dim("Successfully coupled all rooms"))
+                print(dim("Successfully coupled all rooms (default)"))
 
-            # Register rooms in order
             self.rooms = [omega1, omega2, omega3]
 
             if args.verbose:
                 self.names = {}
                 for i in range(3):
                     self.names[self.rooms[i]] = f"Omega_{i+1}"
-
         else:
             raise NotImplementedError("only default and alternative layouts implemented")
 
     def iterate(self):
-        """
-        Perform one Dirichlet–Neumann iteration sweep on all rooms.
-
-        NOTE:
-        - The 'dirichlet' flag in the zip(...) arrays isn't actually
-          used inside iterate_room() in this file, but we're keeping
-          the structure the team had so we don't break anything.
-        """
+        # Dirichlet-Neumann style sweep:
+        # 1. solve omega2 first (the tall middle room),
+        # 2. then solve the neighbors using the flux (neumann).
         if args.geometry == "default":
-            for room, dirichlet in zip(self.rooms, [True, False, True]):
-                room.iterate_room()
-                if args.verbose:
-                    print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
+            # rooms = [omega1, omega2, omega3]
+            omega1, omega2, omega3 = self.rooms
+
+            # step 1: middle room with Dirichlet from neighbors
+            omega2.iterate_room()
+            # step 2: outer rooms with Neumann from middle
+            omega1.iterate_room()
+            omega3.iterate_room()
+            if args.verbose:
+                for r in self.rooms:
+                    print(dim(f"    Solved temperatures in room '{self.names[r]}'"))
             return
 
         elif args.geometry == "alternative":
-            for room, dirichlet in zip(self.rooms, [True, False, True, True]):
-                room.iterate_room()
-                if args.verbose:
-                    print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
+            # rooms = [omega1, omega2, omega3, omega4]
+            omega1, omega2, omega3, omega4 = self.rooms
+
+            # step 1: middle room first
+            omega2.iterate_room()
+            # step 2: others
+            omega1.iterate_room()
+            omega3.iterate_room()
+            omega4.iterate_room()
+            if args.verbose:
+                for r in self.rooms:
+                    print(dim(f"    Solved temperatures in room '{self.names[r]}'"))
             return
 
         raise NotImplementedError("geometry problem in iterate()")
 
     def plot(self):
-        """
-        Stitch subdomain solutions together into one array and show temperature.
-        """
         import matplotlib.pyplot as plt
         import numpy as np
 
         if args.geometry == "default":
-            #Grab grid sizes from each room
+            # --- your existing default plotting (unchanged) ---
             Nxs = [room.Nx for room in self.rooms]
             Nys = [room.Ny for room in self.rooms]
-
-            #Combined array size:
-            #X direction: sum of widths minus overlap columns
-            #Y direction: max height
             X = sum(Nxs) - 2
             Y = max(Nys)
 
             array = np.zeros((Y, X))
-
-            #Room 1 (omega1) goes top-left
             array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+            array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += self.rooms[1].u.reshape((Nys[1], Nxs[1]))
+            array[Y - Nys[2] :, Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2]] += \
+                self.rooms[2].u.reshape((Nys[2], Nxs[2]))
 
-            #Room 2 (omega2) spans the full height in the middle
-            array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += self.rooms[1].u.reshape(
-                (Nys[1], Nxs[1])
-            )
-
-            #Room 3 (omega3) is bottom-right
-            array[
-                Y - Nys[2] :,
-                Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2],
-            ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
-
-            #Average values on the shared interface columns to avoid double-count stripe
             array[: Nys[0], Nxs[0] - 1] /= 2
             array[Y - Nys[2] :, Nxs[0] + Nxs[1] - 2] /= 2
 
-            #Plot extent in physical coordinates
             eps = args.dx / 2
             plt.imshow(
                 array,
@@ -338,44 +276,149 @@ class Apartment:
                     -eps,
                     eps + max([room.Ly for room in self.rooms]),
                 ],
-                cmap="viridis",  # teacher used 'seismic' to spot jumps
+                cmap="seismic",
             )
             plt.colorbar()
             plt.show()
             return
 
         elif args.geometry == "alternative":
-            Nxs = [room.Nx for room in self.rooms]
-            Nys = [room.Ny for room in self.rooms]
+            # -----------------------------------------------------------------
+            # Physical layout for the 4-room ("alternative"/project3a) case:
+            #
+            #   Omega1 (Ω1): x ∈ [0,1],   y ∈ [0,1]         size 1 x 1
+            #   Omega2 (Ω2): x ∈ [1,2],   y ∈ [0,2]         size 1 x 2 (tall hall)
+            #   Omega3 (Ω3): x ∈ [2,3],   y ∈ [1,2]         size 1 x 1 (top-right)
+            #   Omega4 (Ω4): x ∈ [2,2.5], y ∈ [0.5,1.0]     size 0.5 x 0.5 (small nook)
+            #
+            # NOTE:
+            # - All rooms share the same dx.
+            # - We build a unified grid covering x ∈ [0,3], y ∈ [0,2].
+            # - We drop duplicate rows/cols on shared interfaces by averaging.
+            # -----------------------------------------------------------------
 
-            #For alternative layout, last room (omega4) isn't just glued in a line,
-            # so X is sum of first 3 widths, Y is tallest height.
-            X = sum(Nxs[:-1])
-            Y = max(Nys)
+            # unpack for readability
+            omega1, omega2, omega3, omega4 = self.rooms
 
-            array = np.zeros((Y, X))
+            dx = args.dx
 
-            # omega1 top-left
-            array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+            # global physical domain spans 0 ≤ x ≤ 3, 0 ≤ y ≤ 2
+            Lx_total = 3.0
+            Ly_total = 2.0
 
-            #omega2 middle column
-            array[:, Nxs[0] : Nxs[0] + Nxs[1]] += self.rooms[1].u.reshape(
-                (Nys[1], Nxs[1])
+            # number of nodes in global grid
+            # each local room uses Nx = Lx/dx + 1, Ny = Ly/dx + 1
+            Nx_global = int(round(Lx_total / dx)) + 1   # columns
+            Ny_global = int(round(Ly_total / dx)) + 1   # rows
+
+            global_array = np.full((Ny_global, Nx_global), np.nan)
+
+            # helper to place a room field u into global_array using physical extents
+            def place_room(u_vec, room, x0, x1, y0, y1, average=True):
+                """
+                u_vec: flat solution array from the room (length room.Nx * room.Ny)
+                room: the Room object (for Nx, Ny)
+                [x0,x1]x[y0,y1]: physical extent of this room in meters
+                average: if True, average where overlap already exists
+                """
+                u_local = u_vec.reshape((room.Ny, room.Nx))  # (Ny rows, Nx cols)
+
+                # compute index ranges in the global grid
+                # IMPORTANT:
+                # y increases upward physically, but numpy row index increases downward.
+                # our arrays are stored origin="lower" when plotting,
+                # and your room.u is already built with origin "lower".
+                # So we map y directly bottom->top to row indices bottom->top.
+
+                # convert physical coords to index ranges
+                ix0 = int(round(x0 / dx))
+                ix1 = int(round(x1 / dx))  # inclusive end in physical is exclusive in slicing
+
+                iy0 = int(round(y0 / dx))
+                iy1 = int(round(y1 / dx))
+
+                # dimensions sanity
+                # local Nx should match ix1-ix0
+                # local Ny should match iy1-iy0
+                # because Nx = Lx/dx + 1, and ix1-ix0 should equal that
+                # slight off-by-one may happen if we don't align shared boundaries carefully.
+                # We'll clamp to fit.
+                sub_Nx = ix1 - ix0 + 1  # naive inclusive interpretation
+                sub_Ny = iy1 - iy0 + 1
+
+                # We actually want half-open slices [ix0:ix1+1], [iy0:iy1+1]
+                # But to stay consistent with node sharing,
+                # we take the raw room grid directly:
+                tgt_x_slice = slice(ix0, ix0 + room.Nx)
+                tgt_y_slice = slice(iy0, iy0 + room.Ny)
+
+                # grow global array there if first write or average if overlap
+                existing = global_array[tgt_y_slice, tgt_x_slice]
+
+                if average and np.any(~np.isnan(existing)):
+                    # where there's already data, average
+                    mask_new = np.isnan(existing)
+                    # fill untouched spots first
+                    existing[mask_new] = u_local[mask_new]
+                    # average where both exist
+                    both_mask = ~mask_new
+                    existing[both_mask] = 0.5 * (existing[both_mask] + u_local[both_mask])
+                    global_array[tgt_y_slice, tgt_x_slice] = existing
+                else:
+                    global_array[tgt_y_slice, tgt_x_slice] = u_local
+
+            # --- place each room using the physical extents defined above ---
+
+            # Ω1: [0,1] x [0,1]
+            place_room(
+                omega1.u,
+                omega1,
+                x0=0.0, x1=1.0,
+                y0=0.0, y1=1.0,
             )
 
-            #omega3 bottom-right
-            array[
-                Y - Nys[2] :,
-                Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2],
-            ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
+            # Ω2: [1,2] x [0,2]
+            place_room(
+                omega2.u,
+                omega2,
+                x0=1.0, x1=2.0,
+                y0=0.0, y1=2.0,
+            )
 
-            #omega4 (the little extra room)
-            array[
-                Y - Nys[2] - Nys[3] : Y - Nys[2],
-                Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[3],
-            ] += self.rooms[3].u.reshape((Nys[3], Nxs[3]))
+            # Ω3: [2,3] x [1,2]
+            place_room(
+                omega3.u,
+                omega3,
+                x0=2.0, x1=3.0,
+                y0=1.0, y1=2.0,
+            )
 
-            plt.imshow(array, aspect=1, origin="lower", cmap="seismic")
+            # Ω4: [2.0,2.5] x [0.5,1.0]
+            place_room(
+                omega4.u,
+                omega4,
+                x0=2.0, x1=2.5,
+                y0=0.5, y1=1.0,
+            )
+
+            # now plot the assembled field.
+            # Some cells in global_array might still be NaN where no room exists.
+            # We'll set those to a neutral background (e.g. 15°C) just for visualization.
+            nan_mask = np.isnan(global_array)
+            if np.any(nan_mask):
+                global_array[nan_mask] = 15.0  # neutral interior-ish temp
+
+            plt.imshow(
+                global_array,
+                origin="lower",
+                aspect="equal",
+                extent=[0.0, Lx_total, 0.0, Ly_total],
+                cmap="seismic",
+            )
             plt.colorbar()
+            plt.xlabel("x [m]")
+            plt.ylabel("y [m]")
+            plt.title("Temperature field (alternative layout)")
             plt.show()
+
             return
