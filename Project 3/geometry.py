@@ -111,7 +111,6 @@ class Apartment:
                 "side": "right",
                 "start": 0.0,
                 "end": 0.5,
-                "type": "dirichlet",
             }
 
             coupling3_4 = {
@@ -119,13 +118,13 @@ class Apartment:
                 "side": "bottom",
                 "start": 0.0,
                 "end": 0.5,
+                "type":"dirichlet"
             }
             coupling4_3 = {
                 "neighbor": omega3,
                 "side": "top",
                 "start": 0.0,
                 "end": 0.5,
-                "type": "dirichlet",
             }
 
             # Attach couplings to rooms
@@ -222,8 +221,8 @@ class Apartment:
                 {
                     "neighbor": omega1,
                     "side": "left",
-                    "start": 1.0,  # top half of omega2: y ∈ [1.0, 2.0]
-                    "end": 2.0,
+                    "start": 0.0,  # top half of omega2: y ∈ [1.0, 2.0]
+                    "end": 1.0,
                     "type": "dirichlet",
                 }
             )
@@ -234,8 +233,8 @@ class Apartment:
                 {
                     "neighbor": omega3,
                     "side": "right",
-                    "start": 0.0,  # bottom half of omega2: y ∈ [0.0, 1.0]
-                    "end": 1.0,
+                    "start": 1.0,  # bottom half of omega2: y ∈ [0.0, 1.0]
+                    "end": 2.0,
                     "type": "dirichlet",
                 }
             )
@@ -339,7 +338,7 @@ class Apartment:
                     -eps,
                     eps + max([room.Ly for room in self.rooms]),
                 ],
-                cmap="seismic",  # teacher used 'seismic' to spot jumps
+                cmap="viridis",  # teacher used 'seismic' to spot jumps
             )
             plt.colorbar()
             plt.show()

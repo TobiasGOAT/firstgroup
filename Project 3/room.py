@@ -125,7 +125,7 @@ class Room:
         self._initialize_BCs(self.heater_sides, self.window_sides)
         
         self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
-
+        self.BCs={"neumann":self.N.copy(), "dirichlet":self.D.copy()}
     
     def _initialize_BCs(self, heater_sides, window_sides):
         #in case the user types mistakes
@@ -227,7 +227,7 @@ class Room:
 
         self.generate_boundary_masks()
 
-    def get_boundary_value(self, side, start, end):
+    def get_boundary_value(self, side, start, end, type="dirichlet"):
         '''Get the boundary value for a specific side and start index.
         Parameters
         ----------
@@ -255,8 +255,13 @@ class Room:
         mask = (x >= start) & (x <= end)
 
         selected_indices = full_boundary[mask]
-
-        return np.array([self.u[i] for i in selected_indices])
+        if type=="dirichlet":
+            return np.array([self.u[i] for i in selected_indices])
+        if type=="neumann":
+            match side:
+                case "left": return np.array([(self.u[i]-self.u[i+1])/self.dx for i in selected_indices])
+                case "right": return np.array([(self.u[i]-self.u[i-1])/self.dx for i in selected_indices])
+                    
 
     def give_border_start_and_end(self, room) -> tuple:
         my_start = my_end = None
@@ -312,13 +317,14 @@ class Room:
             side = coupling["side"]
             my_start = coupling["start"]
             my_end = coupling["end"]
+            type=coupling["type"]
             their_start, their_end = neighbor.give_border_start_and_end(self)
 
 
 
             # Get the boundary values from the neighboring room
             neighbor_values = neighbor.get_boundary_value(
-                Room.opposite_side(side), their_start, their_end
+                Room.opposite_side(side), their_start, their_end, type
             )
 
             if neighbor_values is None:
@@ -329,8 +335,10 @@ class Room:
             values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
             if coupling["type"] == "dirichlet":
                 self.D[Room.walls_order[side]] = values
+                self.N[Room.walls_order[side]] = None
             else:
-                self.N[Room.walls_order[side]] = values
+                self.N[Room.walls_order[side]] = -values
+                self.D[Room.walls_order[side]] = None
 
         self.solver.updateBC(self.D, self.N,self.u)
 
