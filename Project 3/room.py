@@ -114,19 +114,19 @@ class Room:
         self.window_temp = window_temp
         self.normal_wall_temp = normal_wall_temp
         self.side_to_indices = {}
-        self.neighbors = []  # List to store neighboring room couplings 
-        self.couplings = {}  # Dictionary to store coupling details by neighbor name
-        self.u = np.zeros(self.N_tot)  # Initialize temperature array
-        self.new_u = np.zeros(self.N_tot)  # For relaxation
-        self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
-        self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
+        self.neighbors = []  #List to store neighboring room couplings
+        self.couplings = {}  #Dictionary to store coupling details by neighbor name
+        self.u = np.zeros(self.N_tot)  #Initialize temperature array
+        self.new_u = np.zeros(self.N_tot)
+        self.D = [None, None, None, None]  #Dirichlet BCs: [bottom, left, top, right]
+        self.N = [None, None, None, None]  #eumann BCs: [bottom, left, top, right]
         self.boundary_mask = {"bottom": None, "left": None, "top": None, "right": None}
 
         self._initialize_BCs(self.heater_sides, self.window_sides)
-        
+
         self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
         self.BCs={"neumann":self.N.copy(), "dirichlet":self.D.copy()}
-    
+
     def _initialize_BCs(self, heater_sides, window_sides):
         #in case the user types mistakes
         valid_sides = {"bottom", "left", "top", "right"}
@@ -211,11 +211,11 @@ class Room:
         if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
             raise ValueError("The 'end' must be a float greater than 'start'.")
         if not "type" in coupling:
-            coupling["type"] = "neumann"  # Default to Neumann if not specified  
+            coupling["type"] = "neumann"  # Default to Neumann if not specified
         elif "type" in coupling and coupling["type"] not in {"dirichlet", "neumann"}:
             raise ValueError("The 'type' must be either 'dirichlet' or 'neumann'.")
-        
-        # Adjust BC to Neumann for the coupled side
+
+        #Adjust BC to Neumann for the coupled side
         if coupling["type"] == "neumann":
             full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
             self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
@@ -261,7 +261,7 @@ class Room:
             match side:
                 case "left": return np.array([(self.u[i]-self.u[i+1])/self.dx for i in selected_indices])
                 case "right": return np.array([(self.u[i]-self.u[i-1])/self.dx for i in selected_indices])
-                    
+
 
     def give_border_start_and_end(self, room) -> tuple:
         my_start = my_end = None
@@ -294,7 +294,7 @@ class Room:
         x = np.linspace(0, full_length, n)
         mask = [False if (x[i] < start) | (x[i] > end) else True for i in range(n)]
         full_boundary_array = np.zeros(n)
-        
+
 
         boundary_mask = self.boundary_mask[side]
         j = 0
@@ -322,7 +322,7 @@ class Room:
 
 
 
-            # Get the boundary values from the neighboring room
+            #Get the boundary values from the neighboring room
             neighbor_values = neighbor.get_boundary_value(
                 Room.opposite_side(side), their_start, their_end, type
             )
@@ -331,7 +331,7 @@ class Room:
                 continue  # Skip if no values are returned
 
             #border_values = self.get_boundary_value(side, my_start, my_end)
-            # Update the Neumann BC for this side based on the neighbor's values
+            #Update the Neumann BC for this side based on the neighbor's values
             values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
             if coupling["type"] == "dirichlet":
                 self.D[Room.walls_order[side]] = values
@@ -346,7 +346,7 @@ class Room:
         self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
 
 if __name__ == "__main__":
-    four = True  
+    four = True
 
     omega1 = Room("Omega 1", 0.1, (1.0, 1.0), heater_sides=["left"])
     omega2 = Room("Omega 2", 0.1, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
@@ -367,33 +367,31 @@ if __name__ == "__main__":
         omega1.iterate_room()
         omega3.iterate_room()
         omega4.iterate_room() if four else None
-        
+
 
     print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
     print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
     print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
     print("Room 4 Temperature Distribution:\n", omega4.u.reshape((omega4.Ny, omega4.Nx))) if four else None
 
-    # plotting: compose a single image that places the rooms according to the apartment layout
     import matplotlib.pyplot as plt
     import numpy as _np
 
     if four:
-        # follow the same composition logic as in geometry.py (alternative layout)
         rooms = [omega1, omega2, omega3, omega4]
         Nxs = [r.Nx for r in rooms]
         Nys = [r.Ny for r in rooms]
-        # total image width: place omega1, omega2, omega3 horizontally (omega4 sits under omega3)
+
         X = sum(Nxs[:-1])
         Y = max(Nys)
         array = _np.zeros((Y, X))
-        # Omega1 at left bottom
+        #Ψ1
         array[: Nys[0], : Nxs[0]] += omega1.u.reshape((Nys[0], Nxs[0]))
-        # Omega2 in center (spans full height)
+        #Ω2
         array[:, Nxs[0] : Nxs[0] + Nxs[1]] += omega2.u.reshape((Nys[1], Nxs[1]))
-        # Omega3 at top-right
+        #Ω3
         array[Y - Nys[2] :, Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2]] += omega3.u.reshape((Nys[2], Nxs[2]))
-        # Omega4 below Omega3
+        #Ω4
         array[Y - Nys[2] - Nys[3] : Y - Nys[2], Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[3]] += omega4.u.reshape((Nys[3], Nxs[3]))
 
         plt.figure(figsize=(6, 6))
@@ -402,7 +400,7 @@ if __name__ == "__main__":
         plt.colorbar()
         plt.show()
     else:
-        # default 3-room layout (same composition as geometry.py default)
+        #default 3-room layout
         rooms = [omega1, omega2, omega3]
         Nxs = [r.Nx for r in rooms]
         Nys = [r.Ny for r in rooms]
