@@ -214,25 +214,34 @@ class HeatSolver:
     # Public API
     # ------------------------------------------------------------------ #
 
-    def updateBC(self,dirichletBC,neumanBC,u=None):
-        #If DBC or NBC should not be uppdated, set them as None
+    
+    def updateBC(self, dirichletBC, neumanBC, u=None):
+        """
+        Update boundary conditions for this solve.
 
-        if u is not None and np.any(u != 0):
-            neumanBC = self._calcNeumanFlux(u)
+        dirichletBC : list of 4 arrays/None  [bottom, left, top, right]
+        neumanBC    : list of 4 arrays/None  [bottom, left, top, right]
 
-        if dirichletBC == None:
+        IMPORTANT:
+        We DO NOT recompute neumanBC from u here.
+        We trust the caller (Room.iterate_room), which already built
+        the correct interface flux using the neighbor room.
+        """
+
+        # If caller passes None, keep the previous BCs.
+        if dirichletBC is None:
             dirichletBC = self.dirichletBC
         else:
             self.dirichletBC = dirichletBC
-        if neumanBC == None:
+
+        if neumanBC is None:
             neumanBC = self.neumanBC
         else:
             self.neumanBC = neumanBC
 
-
-        self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
+        # Rebuild matrix with these BCs
+        self.K, self.b = self._construct(dirichletBC, neumanBC)
         self.K = self.K.tocsr()
-
     def solve(self):
         """
         Solve A u = b.
