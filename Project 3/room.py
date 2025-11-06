@@ -170,7 +170,7 @@ class Room:
             elif s == "top":    self.D[2] = np.full(self.Nx, self.heater_temp)
             elif s == "right":  self.D[3] = np.full(self.Ny, self.heater_temp)
 
-
+    '''
     def get_boundary_indices(self, side, start, end, flat=True):
         full_boundary = self.side_to_indices[side]
         full_length = self.Lx if side in {"bottom", "top"} else self.Ly
@@ -180,7 +180,7 @@ class Room:
         x = np.linspace(0, full_length, n)
         mask = (x >= start) & (x <= end)
         return full_boundary[mask]
-
+    '''
     def add_coupling(self, coupling):
         check_keys = {"neighbor", "side", "start", "end", "type"}
         if not isinstance(coupling, dict):
@@ -254,7 +254,8 @@ class Room:
                 break
         if my_start is None or my_end is None:
             raise ValueError("The specified room is not a neighbor.")
-        return my_start, my_end
+        side_length = self.Lx if coupling["side"] in {"bottom", "top"} else self.Ly
+        return my_start, my_end, side_length
 
     def generate_global_boundary_masks(self):
         for side in Room.walls_order.keys():
@@ -268,7 +269,6 @@ class Room:
                 mask |= (x >= neighbor["start"]) & (x <= neighbor["end"])
             self.global_boundary_mask[side] = mask
 
-            print(f"Global boundary mask for side '{side}': {self.global_boundary_mask[side]}, room '{self.aname}' ")
 
 
     def create_full_boundary_array(self, values, side, start, end, coupling_type):
@@ -279,6 +279,20 @@ class Room:
         local_mask = [False if (x[i] < start) | (x[i] > end) else True for i in range(n)]
         full_boundary_array = np.zeros(n)
         
+        need = np.count_nonzero(local_mask)
+
+
+        if values is None:
+            raise ValueError(f"create_full_boundary_array: got values=None for side '{side}'")
+
+        if len(values) != need:
+            print(local_mask)
+            print(values)
+            print(self.aname)
+            raise ValueError(
+                f"Length mismatch on side '{side}': got values={len(values)} but segment needs {need} "
+                f"(start={start}, end={end}, n={n})"
+            )
         j = 0
         for i in range(n):
             if local_mask[i]:
@@ -322,21 +336,33 @@ class Room:
         for side in Room.walls_order.keys():
             local_dirichlet = self.u[self.side_to_indices[side]]
             local_neumann = self.get_neumann_boundary_value(side)
-            self.boundary_information["Dirichlet"][Room.walls_order[side]] = local_dirichlet[self.global_boundary_mask[side]] # ensures consistency with the full boundary
-            self.boundary_information["Neumann"][Room.walls_order[side]] = local_neumann[self.global_boundary_mask[side]] 
+            self.boundary_information["Dirichlet"][Room.walls_order[side]] = local_dirichlet
+            self.boundary_information["Neumann"][Room.walls_order[side]] = local_neumann 
 
     def get_boundary_information(self):
         return self.boundary_information
+    
+    def filter_neighbor_boundary_values(self, neighbor, neighbor_values, side, start, end):
+        neighbor_start, neighbor_end, neighbor_side_length = neighbor.give_border_start_and_end(self)
+        n = len(neighbor_values)
+        x = np.linspace(0, neighbor_side_length, n)
+        local_mask = (x >= neighbor_start) & (x <= neighbor_end)
+        filtered_values = neighbor_values[local_mask]
+        return filtered_values
+
+
 
     def map_boundary_information(self, neighbor, coupling_type, side, start, end):
         neighbor_info = neighbor.get_boundary_information() # This contains entire boundary info of the neighbor
         if coupling_type == "dirichlet":
             values = neighbor_info["Dirichlet"][Room.walls_order[Room.opposite_side(side)]]
-            full_boundary_array = self.create_full_boundary_array(values, side, start, end, coupling_type) # Here we create the full boundary array for our room, with only the coupled region filled with neighbor values
+            filtered_values = self.filter_neighbor_boundary_values(neighbor, values, side, start, end)
+            full_boundary_array = self.create_full_boundary_array(filtered_values, side, start, end, coupling_type) # Here we create the full boundary array for our room, with only the coupled region filled with neighbor values
             self.D[Room.walls_order[side]] = full_boundary_array
         elif coupling_type == "neumann":
             values = neighbor_info["Neumann"][Room.walls_order[Room.opposite_side(side)]]
-            full_boundary_array = self.create_full_boundary_array(values, side, start, end, coupling_type) # Here we create the full boundary array for our room, with only the coupled region filled with neighbor values
+            filtered_values = self.filter_neighbor_boundary_values(neighbor, values, side, start, end)
+            full_boundary_array = self.create_full_boundary_array(filtered_values, side, start, end, coupling_type) # Here we create the full boundary array for our room, with only the coupled region filled with neighbor values
             self.N[Room.walls_order[side]] = full_boundary_array
 
     def iterate_room(self):
@@ -359,7 +385,8 @@ class Room:
         self.generate_boundary_information()
 
 if __name__ == "__main__":
-    four = False
+    four = True
+    decoupled = True
 
     omega1 = Room("Omega 1", 0.01, (1.0, 1.0), heater_sides=["left"])
     omega2 = Room("Omega 2", 0.01, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
@@ -371,9 +398,9 @@ if __name__ == "__main__":
     omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0, "type": "dirichlet"})
     omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"}) if four else None
     omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type": "neumann"})
-    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "neumann"}) if four and not decoupled else None
     omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
-    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"}) if four and not decoupled else None
 
     omega1.generate_boundary_information()
     omega2.generate_boundary_information()  
@@ -386,12 +413,6 @@ if __name__ == "__main__":
         omega4.iterate_room() if four else None
         omega3.iterate_room()
         
-        
-
-    print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
-    print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
-    print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
-    print("Room 4 Temperature Distribution:\n", omega4.u.reshape((omega4.Ny, omega4.Nx))) if four else None
 
         # --- Combined temperature plot for all rooms ---
     import matplotlib.pyplot as plt
