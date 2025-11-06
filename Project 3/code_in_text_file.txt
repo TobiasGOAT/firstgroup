@@ -1,0 +1,1431 @@
+# Basic ANSI color codes
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+UNDERLINE = "\033[4m"
+
+# Foreground colors
+BLACK   = "\033[30m"
+RED     = "\033[31m"
+GREEN   = "\033[32m"
+YELLOW  = "\033[33m"
+BLUE    = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN    = "\033[36m"
+WHITE   = "\033[37m"
+
+# Helper functions
+def color(text, code): 
+    return f"{code}{text}{RESET}"
+
+def red(text): 
+    return color(text, RED)
+
+def green(text): 
+    return color(text, GREEN)
+
+def yellow(text): 
+    return color(text, YELLOW)
+
+def blue(text): 
+    return color(text, BLUE)
+
+def magenta(text): 
+    return color(text, MAGENTA)
+
+def cyan(text): 
+    return color(text, CYAN)
+
+def bold(text): 
+    return color(text, BOLD)
+
+def dim(text): 
+    return color(text, DIM)
+
+def underline(text): 
+    return color(text, UNDERLINE)
+import argparse
+from cli_helpers import *
+import sys
+
+
+def get_args():
+    parser = argparse.ArgumentParser(
+        description="Program for solving the stationaty heat equation in two dimensions",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="increase output verbosity"
+    )
+    parser.add_argument("-k", "--kmat", action="store_true", help="print K matrix")
+    parser.add_argument("-s", "--save", action="store_true", help="save plot of result")
+    parser.add_argument(
+        "geometry",
+        nargs="?",
+        help="The geometry setting to be used. Alternatives: "
+        "\n  'default' : Uses the default 3-room layout"
+        "\n  'alternative' : Uses the alternative 4-room layout found in the appendix"
+        "\n  'custom' : Lets user define a custom geometry (interactive, CLI)",
+        default="default",
+        const="default",
+    )
+    parser.add_argument("-p", "--plot", action="store_true", help="plot the result")
+    parser.add_argument(
+        "-c", "--credits", action="store_true", help="show credits and exit"
+    )
+    parser.add_argument(
+        "-dx",
+        "--dx",
+        help="define mesh sizing, defaults to 1/20:=0.05",
+        default=None,
+        type=float,
+        metavar=""
+    )
+    parser.add_argument(
+        "-i",
+        "--iterations",
+        default=10,
+        type=int,
+        help="number of iterations when solving, defaults to 10",
+        metavar=""
+    )
+
+    args = parser.parse_args()
+    if args.credits:
+        authors = [
+            "Johan Fritz",
+            "Tobias Ryden",
+            "Samuel Eriksson",
+            "Valia Diamantaki",
+            "Vahid Faraji",
+        ]
+        print("Program written by:")
+        for a in authors:
+            print(f"    -{bold(a)}")
+        print("as a project in the course")
+        print("    'Advanced Course in Numerical Algorithms with Python/SciPy'")
+        print("at Lund University")
+        sys.exit(0)
+
+    if args.dx == None:
+        print(bold("No value for 'dx' supplied, defaulting to dx:=0.05"))
+        args.dx = 1 / 20
+    elif args.verbose:
+        print(f"Running script with dx={args.dx}")
+    if args.geometry not in ["default", "alternative"]:
+        raise NotImplementedError("")
+    return args
+
+
+args = get_args()
+from room import Room
+from cli_parser import args
+from cli_helpers import *
+
+
+class Apartment:
+    def __init__(self, layout="default", dx=1 / 20):
+        """
+        Build the apartment geometry and define how rooms are coupled.
+
+        layout = "default":
+            Omega1 (1x1) on top-left
+            Omega2 (1x2) tall in the middle
+            Omega3 (1x1) bottom-right
+
+            Geometry picture (y up):
+                Omega1 | (top half of Omega2)
+                       |
+                -------+---------
+                       | (bottom half of Omega2) | Omega3
+
+            Important: Omega1 only touches the TOP HALF of Omega2's left wall.
+                       Omega3 only touches the BOTTOM HALF of Omega2's right wall.
+
+        layout = "alternative":
+            Omega1, Omega2, Omega3 like above + Omega4 (1/2 x 1/2 "small room").
+            This is the extended problem (3a).
+        """
+
+        if layout == "alternative":
+            # --- Create rooms -------------------------------------------------
+            omega1 = Room(
+                "",
+                dx=dx,
+                shape=(1, 1),
+                heater_sides=["left"],
+                window_sides=[],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_1'"))
+
+            omega2 = Room(
+                "",
+                dx=dx,
+                shape=(1, 2),
+                heater_sides=["top"],
+                window_sides=["bottom"],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_2'"))
+
+            omega3 = Room(
+                "",
+                dx=dx,
+                shape=(1, 1),
+                heater_sides=["right"],
+                window_sides=[],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_3'"))
+
+            omega4 = Room(
+                "",
+                dx=dx,
+                shape=(1 / 2, 1 / 2),
+                heater_sides=["bottom"],
+                window_sides=[],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_4'"))
+
+            # --- Couplings for the "alternative" layout ----------------------
+            #NOTE: we haven't audited these segments yet in detail.
+            coupling1_2 = {
+                "neighbor": omega2,
+                "side": "right",
+                "start": 0.0,
+                "end": 1.0,
+            }
+            coupling2_1 = {
+                "neighbor": omega1,
+                "side": "left",
+                "start": 0.0,
+                "end": 1.0,
+                "type": "dirichlet",
+            }
+
+            coupling2_3 = {
+                "neighbor": omega3,
+                "side": "right",
+                "start": 1.0,
+                "end": 2.0,
+                "type": "dirichlet",
+            }
+            coupling3_2 = {
+                "neighbor": omega2,
+                "side": "left",
+                "start": 0.0,
+                "end": 1.0,
+            }
+
+            coupling2_4 = {
+                "neighbor": omega4,
+                "side": "right",
+                "start": 0.5,
+                "end": 1.0,
+                "type": "dirichlet",
+            }
+            coupling4_2 = {
+                "neighbor": omega2,
+                "side": "right",
+                "start": 0.0,
+                "end": 0.5,
+                "type": "dirichlet",
+            }
+
+            coupling3_4 = {
+                "neighbor": omega4,
+                "side": "bottom",
+                "start": 0.0,
+                "end": 0.5,
+            }
+            coupling4_3 = {
+                "neighbor": omega3,
+                "side": "top",
+                "start": 0.0,
+                "end": 0.5,
+                "type": "dirichlet",
+            }
+
+            # Attach couplings to rooms
+            omega1.add_coupling(coupling1_2)
+            omega2.add_coupling(coupling2_1)
+            omega2.add_coupling(coupling2_3)
+            omega2.add_coupling(coupling2_4)
+            omega3.add_coupling(coupling3_2)
+            omega3.add_coupling(coupling3_4)
+            omega4.add_coupling(coupling4_2)
+            omega4.add_coupling(coupling4_3)
+
+            if args.verbose:
+                print(dim("Successfully coupled all rooms"))
+
+            #Register rooms in order
+            self.rooms = [omega1, omega2, omega3, omega4]
+
+            if args.verbose:
+                self.names = {}
+                for i in range(4):
+                    self.names[self.rooms[i]] = f"Omega_{i+1}"
+
+        elif layout == "default":
+            # --- Create rooms ----------------------------
+            omega1 = Room(
+                "",
+                dx,
+                shape=(1, 1),
+                heater_sides=["left"],
+                window_sides=[],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_1'"))
+
+            omega2 = Room(
+                "",
+                dx,
+                (1, 2),
+                heater_sides=["top"],
+                window_sides=["bottom"],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_2'"))
+
+            omega3 = Room(
+                "",
+                dx,
+                shape=(1, 1),
+                heater_sides=["right"],
+                window_sides=[],
+            )
+            if args.verbose:
+                print(dim("Successfully created room 'Omega_3'"))
+
+            # --- Couplings for the "default" layout --------------------------
+            """
+                GEOMETRY / INTERFACE MAP (very important)
+                Room sizes:
+                    omega1: 1 x 1
+                    omega2: 1 x 2   (tall, spans both top and bottom)
+                    omega3: 1 x 1
+
+                Contact logic:
+                    - omega1 only touches the TOP HALF of omega2's LEFT wall
+                    - omega3 only touches the BOTTOM HALF of omega2's RIGHT wall
+
+                Coordinate convention for start/end:
+                    For vertical walls ("left" / "right"), start/end are measured
+                    from bottom→top along that wall in *physical length units*.
+
+                    omega2 has total height Ly = 2.0, so:
+                        y in [0.0, 1.0] = bottom half of omega2
+                        y in [1.0, 2.0] = top half of omega2
+
+                Bug we had:
+                    The omega1–omega2 interface looked wrong (discontinuous),
+                    while omega2–omega3 looked ok. That happened because we were
+                    assigning the wrong half of omega2's wall to the wrong neighbor.
+
+                Correct coupling (what we enforce below):
+                    - omega2.left  with omega1 -> use [1.0, 2.0]  (TOP half)
+                    - omega2.right with omega3 -> use [0.0, 1.0]  (BOTTOM half)
+                """
+            omega1.add_coupling(
+                {
+                    "neighbor": omega2,
+                    "side": "right",
+                    "start": 0.0,
+                    "end": 1.0,
+                }
+            )
+            omega2.add_coupling(
+                {
+                    "neighbor": omega1,
+                    "side": "left",
+                    "start": 1.0,  # top half of omega2: y ∈ [1.0, 2.0]
+                    "end": 2.0,
+                    "type": "dirichlet",
+                }
+            )
+
+            # omega2 → omega3
+            # omega3 sits against the BOTTOM HALF of omega2's right wall
+            omega2.add_coupling(
+                {
+                    "neighbor": omega3,
+                    "side": "right",
+                    "start": 0.0,  # bottom half of omega2: y ∈ [0.0, 1.0]
+                    "end": 1.0,
+                    "type": "dirichlet",
+                }
+            )
+
+            # omega3 → omega2
+            omega3.add_coupling(
+                {
+                    "neighbor": omega2,
+                    "side": "left",
+                    "start": 0.0,
+                    "end": 1.0,
+                }
+            )
+
+            if args.verbose:
+                print(dim("Successfully coupled all rooms"))
+
+            # Register rooms in order
+            self.rooms = [omega1, omega2, omega3]
+
+            if args.verbose:
+                self.names = {}
+                for i in range(3):
+                    self.names[self.rooms[i]] = f"Omega_{i+1}"
+
+        else:
+            raise NotImplementedError("only default and alternative layouts implemented")
+
+    def iterate(self):
+        """
+        Perform one Dirichlet–Neumann iteration sweep on all rooms.
+
+        NOTE:
+        - The 'dirichlet' flag in the zip(...) arrays isn't actually
+          used inside iterate_room() in this file, but we're keeping
+          the structure the team had so we don't break anything.
+        """
+        if args.geometry == "default":
+            for room, dirichlet in zip(self.rooms, [True, False, True]):
+                room.iterate_room()
+                if args.verbose:
+                    print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
+            return
+
+        elif args.geometry == "alternative":
+            for room, dirichlet in zip(self.rooms, [True, False, True, True]):
+                room.iterate_room()
+                if args.verbose:
+                    print(dim(f"    Solved temperatures in room '{self.names[room]}'"))
+            return
+
+        raise NotImplementedError("geometry problem in iterate()")
+
+    def plot(self):
+        """
+        Stitch subdomain solutions together into one array and show temperature.
+        """
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        if args.geometry == "default":
+            #Grab grid sizes from each room
+            Nxs = [room.Nx for room in self.rooms]
+            Nys = [room.Ny for room in self.rooms]
+
+            #Combined array size:
+            #X direction: sum of widths minus overlap columns
+            #Y direction: max height
+            X = sum(Nxs) - 2
+            Y = max(Nys)
+
+            array = np.zeros((Y, X))
+
+            #Room 1 (omega1) goes top-left
+            array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+
+            #Room 2 (omega2) spans the full height in the middle
+            array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += self.rooms[1].u.reshape(
+                (Nys[1], Nxs[1])
+            )
+
+            #Room 3 (omega3) is bottom-right
+            array[
+                Y - Nys[2] :,
+                Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2],
+            ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
+
+            #Average values on the shared interface columns to avoid double-count stripe
+            array[: Nys[0], Nxs[0] - 1] /= 2
+            array[Y - Nys[2] :, Nxs[0] + Nxs[1] - 2] /= 2
+
+            #Plot extent in physical coordinates
+            eps = args.dx / 2
+            plt.imshow(
+                array,
+                aspect=1,
+                origin="lower",
+                extent=[
+                    -eps,
+                    sum(room.Lx for room in self.rooms) + eps,
+                    -eps,
+                    eps + max([room.Ly for room in self.rooms]),
+                ],
+                cmap="seismic",  # teacher used 'seismic' to spot jumps
+            )
+            plt.colorbar()
+            plt.show()
+            return
+
+        elif args.geometry == "alternative":
+            Nxs = [room.Nx for room in self.rooms]
+            Nys = [room.Ny for room in self.rooms]
+
+            #For alternative layout, last room (omega4) isn't just glued in a line,
+            # so X is sum of first 3 widths, Y is tallest height.
+            X = sum(Nxs[:-1])
+            Y = max(Nys)
+
+            array = np.zeros((Y, X))
+
+            # omega1 top-left
+            array[: Nys[0], : Nxs[0]] += self.rooms[0].u.reshape((Nys[0], Nxs[0]))
+
+            #omega2 middle column
+            array[:, Nxs[0] : Nxs[0] + Nxs[1]] += self.rooms[1].u.reshape(
+                (Nys[1], Nxs[1])
+            )
+
+            #omega3 bottom-right
+            array[
+                Y - Nys[2] :,
+                Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2],
+            ] += self.rooms[2].u.reshape((Nys[2], Nxs[2]))
+
+            #omega4 (the little extra room)
+            array[
+                Y - Nys[2] - Nys[3] : Y - Nys[2],
+                Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[3],
+            ] += self.rooms[3].u.reshape((Nys[3], Nxs[3]))
+
+            plt.imshow(array, aspect=1, origin="lower", cmap="seismic")
+            plt.colorbar()
+            plt.show()
+            return
+import numpy as np
+import scipy.sparse as sp
+
+"""
+------------------------------------------------------------
+READ ME FIRST 
+------------------------------------------------------------
+A finite-difference solver for the 2D Laplace equation
+on a rectangular room.
+
+It builds a sparse matrix with the 5-point stencil,
+applies boundary conditions, and solves Au = b for the temperature.
+
+Coordinate picture:
+y=Ly  ┌──────── top ────────┐
+      │                     │
+      │         Ω           │
+left  │                     │  right
+x=0   │                     │  x=Lx
+      │                     │
+      └────── bottom ───────┘  y=0
+
+------------------------------------------------------------
+Parameters
+------------------------------------------------------------
+dx : float
+    Grid spacing is assumed to be the same in x and y axis.
+
+sides : [Lx, Ly]
+    Physical lengths of the rectangle. The grid sizes are:
+        Nx = int(Lx/dx) + 1
+        Ny = int(Ly/dx) + 1
+    The 1D flattened solution has length N = Nx * Ny.
+
+dirichletBC : [bottom, left, top, right]
+neumanBC    : [bottom, left, top, right]
+    Dirichlet values (temperatures) and Neumann fluxes (∂u/∂n) per side.
+    For each side, provide EITHER Dirichlet OR Neumann (not both).
+
+    Array lengths must match the number of nodes on each side:
+        - bottom/top length: Nx
+        - left/right length: Ny
+    Use None for a side you don't set for that BC type.
+
+-----------------------------------------------------------
+Returns from solve(dirElseNeu: bool)
+------------------------------------------------------------
+u : (Nx*Ny,) ndarray
+    Flattened temperature field (row-major; index = j*Nx + i).
+
+sideValues : list of 1D ndarrays (length 4, order: [bottom, left, top, right])
+    If dirElseNeu=True  → Dirichlet traces u on each side.
+    If dirElseNeu=False → Neumann traces (∂u/∂n) estimated by
+                           (u_inner - u_boundary)/dx  (aligned with outward normal).
+    Lengths are Nx for bottom/top and Ny for left/right.
+"""
+from cli_parser import args
+class HeatSolver:
+    def __init__(self, dx, sides, dirichletBC, neumanBC):
+        """
+        sides      : [Lx, Ly]
+        dirichletBC: [bottom, left, top, right]
+        neumanBC   : [bottom, left, top, right]
+        """
+        #in case the user gives too small grid
+        self.dx = float(dx)
+        Lx, Ly = float(sides[0]), float(sides[1])
+        self.N_x = int(Lx / self.dx) + 1
+        self.N_y = int(Ly / self.dx) + 1
+        self.dirichletBC = dirichletBC
+        self.neumanBC = neumanBC
+
+        Nx, Ny = self.N_x, self.N_y
+        if Nx < 2 or Ny < 2:
+            raise ValueError("You messed up, the grid too small: need N_x >= 2 and N_y >= 2.")
+
+        #Validate boundary-condition inputs
+        def _check_side(name, dir_arr, neu_arr, expected_len):
+            if dir_arr is not None and neu_arr is not None:
+                raise ValueError(f"{name}: cannot set both Dirichlet and Neumann.")
+            if dir_arr is not None and len(dir_arr) != expected_len:
+                raise ValueError(f"{name} Dirichlet length {len(dir_arr)} != expected {expected_len}.")
+            if neu_arr is not None and len(neu_arr) != expected_len:
+                raise ValueError(f"{name} Neumann length {len(neu_arr)} != expected {expected_len}.")
+
+        _check_side("bottom", dirichletBC[0], neumanBC[0], Nx)
+        _check_side("left",   dirichletBC[1], neumanBC[1], Ny)
+        _check_side("top",    dirichletBC[2], neumanBC[2], Nx)
+        _check_side("right",  dirichletBC[3], neumanBC[3], Ny)
+
+        #Build Laplacian matrix A (scaled), and boundary index ranges
+        self.K_size = Nx * Ny
+        self._createRanges()                  #boundary & adjacent-inner indices
+
+        self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
+ 
+        self.K = self.K.tocsr()
+
+    # ------------------------------------------------------------------ #
+    # Internals
+    # ------------------------------------------------------------------ #
+
+    def _createRanges(self):
+        Nx, Ny = self.N_x, self.N_y
+        N = self.K_size
+
+        #boundary indices
+        bottom = np.arange(0, Nx)
+        left   = np.arange(0, N, Nx)
+        top    = np.arange(N - Nx, N)
+        right  = np.arange(Nx - 1, N, Nx)
+
+        #adjacent inner indices (one step inward)
+        bottom_in = bottom + Nx
+        left_in   = left + 1
+        top_in    = top - Nx
+        right_in  = right - 1
+
+        self.ranges = [
+            [bottom, left, top, right],
+            [bottom_in, left_in, top_in, right_in]
+        ]
+        self.range_map = {
+            "bottom": (bottom, bottom_in),
+            "left":   (left,   left_in),
+            "top":    (top,    top_in),
+            "right":  (right,  right_in),
+        }    
+
+        self.sideToSign = {
+                "bottom": -1.0,  # u_bd = u_inner + dx * q_bottom
+                "top":    +1.0,  # u_bd = u_inner - dx * q_top
+                "left":   -1.0,  # u_bd = u_inner + dx * q_left
+                "right":  +1.0   # u_bd = u_inner - dx * q_right
+            }
+
+    def _construct(self,dirichletBC,neumanBC):
+        """Unscaled 5-point Laplacian in LIL format (row-major flattening)."""
+        main = -4.0 * np.ones(self.K_size)
+        lr = np.ones(self.K_size - 1)
+        # prevent wrap-around between rows for left/right neighbors
+        #+1/-1  -> left/right neighbors in row-major layout
+        #+Nx/-Nx-> up/down neighbors one full row away
+        lr[np.arange(1, self.N_y) * self.N_x - 1] = 0.0
+        ud = np.ones(self.K_size - self.N_x)
+        K = sp.diags(
+            diagonals=[main, lr, lr, ud, ud],
+            offsets=[0, 1, -1, self.N_x, -self.N_x],  
+            format='lil'
+        )
+
+        K = K / (self.dx ** 2)      #scale by 1/h^2 (before BCs)
+
+        b = np.zeros((self.K_size,), dtype=float)   #Build RHS and apply boundary conditions
+
+        # Apply BCs per side in order: [bottom, left, top, right]
+        self._applyBC(K, b, dirichletBC[0], neumanBC[0], self.ranges[0][0], "bottom")
+        self._applyBC(K, b, dirichletBC[1], neumanBC[1], self.ranges[0][1], "left")
+        self._applyBC(K, b, dirichletBC[2], neumanBC[2], self.ranges[0][2], "top")
+        self._applyBC(K, b, dirichletBC[3], neumanBC[3], self.ranges[0][3], "right")
+
+        return K,b
+
+   
+
+    def _applyBC(self, K, b, DBCList, NBCList, boundary_indices,sideName):
+
+        if not hasattr(self, "_bd_to_inner"):
+            self._bd_to_inner = {}
+            for side in ("bottom", "left", "top", "right"):
+                bd_idx, in_idx = self.range_map[side]
+                for bidx, iidx in zip(bd_idx, in_idx):
+                    self._bd_to_inner[bidx] = iidx
+
+
+        #Neumann first (only if provided)
+        if NBCList is not None:
+            if np.isscalar(NBCList):
+                NBCList = np.full(len(boundary_indices), NBCList, dtype=float)
+            NBCList = np.asarray(NBCList, dtype=float)
+
+            # Explicitly set sign and formula per side
+            # formula: u_bd = u_inner + sign * dx * g
+            side_sign = self.sideToSign[sideName]
+
+            for i, g in zip(boundary_indices, NBCList):
+                inner = self._bd_to_inner[i]
+                # Overwrite row to enforce u_bd - u_inner = side_sign * dx * g
+                K.rows[i] = [i, inner]
+                K.data[i] = [1.0, -1.0]
+                b[i] = side_sign * self.dx * g
+
+
+        #Dirichlet overwrites (only if provided)
+        if DBCList is not None:
+            if np.isscalar(DBCList):
+                DBCList = np.full(len(boundary_indices), DBCList, dtype=float)
+            DBCList = np.asarray(DBCList, dtype=float)
+            for i, val in zip(boundary_indices, DBCList):
+                K.rows[i] = [i]         #efficient in LIL: set row to single entry
+                K.data[i] = [1.0]
+                b[i]      = float(val)
+
+    def _calcNeumanFlux(self,u):
+        flux = []
+        index = 0
+        for side in ("bottom", "left", "top", "right"):
+            flux.append( self.sideToSign[side] * (u[ self.range_map[side][0] ] - u[ self.range_map[side][1] ] ) / self.dx )
+            index += 1
+
+        return flux
+
+    # ------------------------------------------------------------------ #
+    # Public API
+    # ------------------------------------------------------------------ #
+
+    def updateBC(self,dirichletBC,neumanBC,u=None):
+        #If DBC or NBC should not be uppdated, set them as None
+
+
+        #if u is not None and np.any(u != 0) and neumanBC is not None:
+        #    neumanBC = self._calcNeumanFlux(u)
+
+        bruh = ["bottom", "left", "top", "right"]
+
+        for side in range(len(neumanBC)):
+            if neumanBC[side] is not None:
+                print(len(neumanBC[side]), len(u[ self.range_map[bruh[side]][1] ]))
+                self.neumanBC[side] = (neumanBC[side] - u[ self.range_map[bruh[side]][1] ]) / self.dx * self.sideToSign[bruh[side]]
+
+        if dirichletBC == None:
+            dirichletBC = self.dirichletBC
+        else:
+            self.dirichletBC = dirichletBC
+        if neumanBC == None:
+            neumanBC = self.neumanBC
+        else:
+            self.neumanBC = neumanBC
+
+
+        self.K,self.b = self._construct(dirichletBC,neumanBC)                 #unscaled 5-point stencil
+        self.K = self.K.tocsr()
+
+    def solve(self):
+        """
+        Solve A u = b.
+        Returns:
+            u : (N_x*N_y,) ndarray (flattened field)
+            sides : dict with lists for 'dirichlet' and 'neumann'
+        """
+        u = sp.linalg.spsolve(self.K, self.b).ravel()
+        if args.kmat:
+            print("K-matrix from solver:")
+            print(self.K.todense())
+        neumanns = []
+        dirichlets = []
+        for s in range(4):
+            u_bd = u[self.ranges[0][s]]
+            u_in = u[self.ranges[1][s]]
+            neumanns.append((u_bd - u_in) / self.dx)
+            dirichlets.append(u_bd.copy())
+
+        return u, {"neumann": neumanns, "dirichlet": dirichlets}
+
+#! /usr/bin/env python3
+# ^above is necessary to make executable
+# use: chmod +x filename.py
+from geometry import Apartment
+from cli_parser import args
+from cli_helpers import *
+
+if args.verbose:
+    print(f"Apartment layout is set to '{args.geometry}'")
+
+apartment = Apartment(args.geometry, args.dx)
+if args.verbose:
+    print(
+        f"Successfully created apartment layout consisting of {len(apartment.rooms)} rooms"
+    )
+for i in range(args.iterations):
+    if args.verbose:
+        print(bold(f"Iteration {i}:"))
+    apartment.iterate()
+if args.plot:
+    apartment.plot()# ============================================
+# Run with:
+#   mpiexec -n 3 python mpi_runner.py
+# ============================================
+
+from mpi4py import MPI
+from geometry import Apartment
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+from cli_parser import args
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+size = comm.Get_size()
+
+if size != 3:
+    if rank == 0:
+        print(" Size=3 required. (mpiexec -n 3 python mpi_runner.py)")
+    exit()
+
+# --- Geometry and setup ---
+apt = Apartment(layout=args.geometry, dx=args.dx)
+rooms = apt.rooms
+my_room = rooms[rank]
+
+relax = 0.8
+max_iter = args.iterations
+tol = 1e-3
+
+for it in range(max_iter):
+    # --- Boundary exchange ---
+    if rank == 0:
+        # Ω1 → send right Dirichlet to Ω2
+        dirichlet_right = my_room.get_boundary_value("right", 0.0, 1.0)
+        comm.send(dirichlet_right, dest=1, tag=10)
+        # Ω1 ← receive Neumann correction from Ω2
+        neumann_right = comm.recv(source=1, tag=20)
+        my_room.N[3] = -neumann_right
+
+    elif rank == 2:
+        # Ω3 → send left Dirichlet to Ω2
+        dirichlet_left = my_room.get_boundary_value("left", 0.0, 1.0)
+        comm.send(dirichlet_left, dest=1, tag=30)
+        # Ω3 ← receive Neumann correction from Ω2
+        neumann_left = comm.recv(source=1, tag=40)
+        my_room.N[1] = -neumann_left
+
+    elif rank == 1:
+        # Ω2 ← receive Dirichlet from Ω1 & Ω3
+        left_D = comm.recv(source=0, tag=10)
+        right_D = comm.recv(source=2, tag=30)
+        my_room.D[1] = left_D
+        my_room.D[3] = right_D
+
+    # --- Local solve ---
+    my_room.solver.updateBC(my_room.D, my_room.N)
+    new_u, _ = my_room.solver.solve()
+    my_room.u = relax * new_u + (1 - relax) * my_room.u
+
+    # --- Send traces for Neumann update ---
+    if rank == 1:
+        left_trace = my_room.get_boundary_value("left", 0.0, 1.0)
+        right_trace = my_room.get_boundary_value("right", 1.0, 2.0)
+        comm.send(left_trace, dest=0, tag=20)
+        comm.send(right_trace, dest=2, tag=40)
+
+    # --- Check convergence ---
+    local_res = np.max(np.abs(my_room.u - new_u))
+    res = comm.allreduce(local_res, op=MPI.MAX)
+    if rank == 0 and it % 2 == 0 and args.verbose:
+        print(f"Iteration {it:2d} | Global residual = {res:.3e}")
+    if res < tol:
+        if rank == 0:
+            print(f"[OK] Converged after {it} iterations.")
+        break
+
+
+
+
+# --- Visualization ---
+
+# --- Gather results to Rank 0 ---
+u_data = comm.gather(my_room.u, root=0)
+Nx_data = comm.gather(my_room.Nx, root=0)
+Ny_data = comm.gather(my_room.Ny, root=0)
+
+if rank == 0:
+    if args.verbose:
+        print("\n Gathering completed. Plotting global temperature field...")
+
+    # unpack sizes
+    Ny0, Ny1, Ny2 = Ny_data[0], Ny_data[1], Ny_data[2]
+    Nx0, Nx1, Nx2 = Nx_data[0], Nx_data[1], Nx_data[2]
+
+    # reshape gathered 1D arrays into 2D fields
+    u1 = u_data[0].reshape(Ny0, Nx0)  # Omega_1 (left)
+    u2 = u_data[1].reshape(Ny1, Nx1)  # Omega_2 (middle)
+    u3 = u_data[2].reshape(Ny2, Nx2)  # Omega_3 (right-bottom)
+
+    # global canvas
+    Y = max(Ny_data)
+    X = sum(Nx_data) - 2  # two shared interface columns
+    full = np.zeros((Y, X))
+
+    # place Omega_1 (top-left)
+    full[:Ny0, :Nx0] = u1
+
+    # place Omega_2 (middle), overlapping 1 col with Omega_1
+    full[:, Nx0-1 : Nx0+Nx1-1] = u2
+
+    # place Omega_3 (bottom-right), overlapping 1 col with Omega_2
+    x3_start = Nx0 - 2 + Nx1                 # == (Nx0-1) + (Nx1-1)
+    full[Y-Ny2:, x3_start : x3_start+Nx2] = u3
+
+    # indices of the interface columns
+    border_L = Nx0 - 1               # Ω1 | Ω2
+    border_R = Nx0 + Nx1 - 2         # Ω2 | Ω3
+
+    # --- averaging borders ---
+    # left border: average between last column of Ω1 and first column of Ω2
+    full[:Ny0, border_L] = 0.5 * (u1[:Ny0, -1] + u2[:Ny0, 0])
+
+    # right border: average between last column of Ω2 and first column of Ω3
+    full[Y - Ny2:, border_R] = 0.5 * (u2[Y - Ny2:, -1] + u3[:, 0])
+
+    # --- Save and plot  ---
+    if args.save:
+        os.makedirs("results", exist_ok=True)
+        out_path = os.path.join("results", "temperature_field.png")
+
+    # unified axes and colormap/range
+    Lx, Ly = 3.0, 2.0
+    VMIN, VMAX = 0.0, 40.0
+    CMAP = "viridis"
+    if args.save or args.plot:
+        plt.figure(figsize=(8, 4.5))
+        plt.imshow(
+            full,
+            origin="lower",
+            extent=[0, Lx, 0, Ly], 
+            aspect="equal",
+            cmap=CMAP, vmin=VMIN, vmax=VMAX,
+            interpolation="bilinear"  # nearest
+        )
+        cbar = plt.colorbar()
+        cbar.set_label("Temperature (°C)")
+        plt.xlabel("x"); plt.ylabel("y")
+        plt.title("MPI Heat Distribution")
+        plt.tight_layout()
+    if args.save:
+        plt.savefig(out_path, dpi=150)
+        if args.verbose:
+            print(f" Figure saved to {out_path}")
+            plt.close()
+    if args.plot:
+        plt.show()
+    
+import numpy as np
+from heatSolver import HeatSolver
+
+''' This is the way the axes for the coupling ("start" and "end") will be defined:
+                                                                  @                    
+                                                                  @@@@                
+           @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
+                                                                   @@@@@              
+                                                                  @@   
+   @      @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      @    
+  @@@     @@                                                             @@     @@@   
+ @@@@@    @@                                                             @@     @@@@  
+@@@@@@@   @@                                                             @@    @@@@@@ 
+@@ @@@@@  @@                                                             @@   @@ @@ @@
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@                                                             @@      @@   
+   @@     @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@      @@   
+                                                                  @                   
+                                                                  @@@@                
+           @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@            
+                                                                   @@@@@              
+                                                                  @@                  '''
+
+
+class Room:
+
+    walls_order = {"bottom": 0, "left": 1, "top": 2, "right": 3}
+
+    @staticmethod
+    def opposite_side(side):
+        opposites = {
+            "bottom": "top",
+            "top": "bottom",
+            "left": "right",
+            "right": "left"
+        }
+        return opposites.get(side, None)
+
+
+    '''
+    A class to represent a room in the apartment.
+    
+    Attributes
+    ----------
+        dx : float
+            The grid spacing.
+        shape : tuple
+            The dimensions of the room (Lx, Ly).
+        heater_sides : list
+            The sides of the room with heaters (e.g., ["left", "right"]).
+        window_sides : list
+            The sides of the room with windows (e.g., ["top"]).
+        heater_temp : float
+            The temperature of the heaters (default is 40).
+        window_temp : float
+            The temperature of the windows (default is 5).
+        normal_wall_temp : float
+            The temperature of the normal walls (default is 15).
+        side_to_indices : dict
+            A mapping from side names to their corresponding grid indices.
+        neighbors : list
+            A list of neighboring room couplings.
+        couplings : dict
+            A dictionary to store coupling details by neighbor name.
+        u : numpy.ndarray
+            The temperature distribution in the room.
+        D : list
+            Dirichlet boundary conditions for each side [bottom, left, top, right].
+        N : list
+            Neumann boundary conditions for each side [bottom, left, top, right].
+        solver : heatSolver.heatSolver
+            The heat solver instance for the room.
+    Methods
+    -------
+        add_coupling(coupling)
+            Add a coupling to a neighboring room.
+        get_boundary_value(side, start, end)
+            Get the boundary value for a specific side and start index.
+        iterate_room()
+            Update the room's temperature distribution.
+    '''
+
+    def __init__(self, aname, dx, shape, relaxation = 0.8, heater_sides=None, window_sides=None, heater_temp=40, window_temp=5, normal_wall_temp=15):
+        self.aname = aname
+        self.relaxation = relaxation
+        self.dx = dx
+        self.Lx, self.Ly = shape
+        self.Nx = int(self.Lx / self.dx) + 1 #number of grid points in x direction
+        self.Ny = int(self.Ly / self.dx) + 1 #number of grid points in y direction
+        self.N_tot = self.Nx * self.Ny
+        self.heater_sides = heater_sides or []
+        self.window_sides = window_sides or []
+        self.heater_temp = heater_temp
+        self.window_temp = window_temp
+        self.normal_wall_temp = normal_wall_temp
+        self.side_to_indices = {}
+        self.neighbors = []  # List to store neighboring room couplings 
+        self.couplings = {}  # Dictionary to store coupling details by neighbor name
+        self.u = np.zeros(self.N_tot)  # Initialize temperature array
+        self.new_u = np.zeros(self.N_tot)  # For relaxation
+        self.D = [None, None, None, None]  # Dirichlet BCs: [bottom, left, top, right]
+        self.N = [None, None, None, None]  # Neumann BCs: [bottom, left, top, right]
+        self.boundary_mask = {"bottom": None, "left": None, "top": None, "right": None}
+
+        self._initialize_BCs(self.heater_sides, self.window_sides)
+        
+        self.solver = HeatSolver(self.dx, (self.Lx, self.Ly), self.D, self.N)
+
+    
+    def _initialize_BCs(self, heater_sides, window_sides):
+        #in case the user types mistakes
+        valid_sides = {"bottom", "left", "top", "right"}
+        groups_to_check = [
+            ("heater_sides", heater_sides),
+            ("window_sides", window_sides)
+        ]
+
+        for group_name, sides in groups_to_check:
+            #Check each side name given by the user
+            for s in sides:
+                if s not in valid_sides:
+                    raise ValueError(
+                        f"Be careful! You wrote gibberish in '{s}' under {group_name}. "
+                        f"Valid names are: {', '.join(sorted(valid_sides))}."
+                    )
+
+        #Boundary Indices
+        self.side_to_indices["bottom"] = np.arange(0, self.Nx)
+        self.side_to_indices["left"] = np.arange(0, self.N_tot, self.Nx)
+        self.side_to_indices["top"] = np.arange(self.N_tot - self.Nx, self.N_tot)
+        self.side_to_indices["right"] = np.arange(self.Nx - 1, self.N_tot, self.Nx)
+
+        self.D[0] = np.full(self.Nx, self.normal_wall_temp) #we set the normal wall as the default value
+        self.D[1] = np.full(self.Ny, self.normal_wall_temp)
+        self.D[2] = np.full(self.Nx, self.normal_wall_temp)
+        self.D[3] = np.full(self.Ny, self.normal_wall_temp)
+
+        #Apply window=5 and heater=40 overrides
+        #window_sides is a list of strings that tells us which walls have windows
+        #heater_sides is a list of strings that tells us which walls have heaters
+        for s in window_sides:
+            if   s == "bottom": self.D[0] = np.full(self.Nx, self.window_temp)
+            elif s == "left":   self.D[1] = np.full(self.Ny, self.window_temp)
+            elif s == "top":    self.D[2] = np.full(self.Nx, self.window_temp)
+            elif s == "right":  self.D[3] = np.full(self.Ny, self.window_temp)
+        for s in heater_sides:
+            if   s == "bottom": self.D[0] = np.full(self.Nx, self.heater_temp)
+            elif s == "left":   self.D[1] = np.full(self.Ny, self.heater_temp)
+            elif s == "top":    self.D[2] = np.full(self.Nx, self.heater_temp)
+            elif s == "right":  self.D[3] = np.full(self.Ny, self.heater_temp)
+
+    def add_coupling(self, coupling):
+        """
+        Adds a coupling between this room and a neighboring room.
+
+        Parameters
+        coupling : dict
+            A dictionary specifying the coupling details. Must contain the following keys:
+            - "neighbor": An instance of the neighboring room (must be of type `room`).
+            - "side": A string indicating which side of the NEIGHBOR room is coupled compared to THIS room ("bottom", "left", "top", "right").
+            - "start": Length of the start along the specified side from THIS room's perspective.
+            - "end": Length of the end along the specified side from THIS room's perspective.
+            - "type": (Optional) Type of coupling, either "dirichlet" or "neumann". Default is "neumann".
+
+
+        Raises
+        ------
+        ValueError
+            If the coupling dictionary is missing required keys, contains invalid values, or types are incorrect.
+
+        Example
+        -------
+        >>> coupling = {
+        ...     "neighbor": room_instance,
+        ...     "side": "left",
+        ...     "start": 0.0,
+        ...     "end": 5.0,
+        ...     "type": "neumann"
+        ... }
+        >>> room.add_coupling(coupling)
+        """
+        check_keys = {"neighbor", "side", "start", "end", "type"}
+        if not isinstance(coupling, dict):
+            raise ValueError(f"Coupling must be a dictionary with keys: {', '.join(sorted(check_keys))}.")
+        if not isinstance(coupling["neighbor"], Room):
+            raise ValueError("The 'neighbor' must be an instance of the Room class.")
+        if coupling["side"] not in {"bottom", "left", "top", "right"}:
+            raise ValueError("The 'side' must be one of: bottom, left, top, right.")
+        if not isinstance(coupling["start"], float) or coupling["start"] < 0:
+            raise ValueError("The 'start' must be a non-negative float.")
+        if "end" in coupling and (not isinstance(coupling["end"], float) or coupling["end"] <= coupling["start"]):
+            raise ValueError("The 'end' must be a float greater than 'start'.")
+        if not "type" in coupling:
+            coupling["type"] = "neumann"  # Default to Neumann if not specified  
+        elif "type" in coupling and coupling["type"] not in {"dirichlet", "neumann"}:
+            raise ValueError("The 'type' must be either 'dirichlet' or 'neumann'.")
+        
+        # Adjust BC to Neumann for the coupled side
+        if coupling["type"] == "neumann":
+            full_side_length = self.Nx if coupling["side"] in {"bottom", "top"} else self.Ny
+            self.N[Room.walls_order[coupling["side"]]] = np.zeros(full_side_length)
+        self.D[Room.walls_order[coupling["side"]]] = None  # Remove Dirichlet BC for this side
+
+        self.solver.updateBC(self.D, self.N,self.u)
+
+        self.neighbors.append(coupling)
+
+        self.generate_boundary_masks()
+
+    def get_boundary_value(self, side, start, end):
+        '''Get the boundary value for a specific side and start index.
+        Parameters
+        ----------
+            side : str
+                The side of the room ("bottom", "left", "top", "right").
+            start : int
+                The starting index along the specified side.
+            end : int
+                The ending index along the specified side.
+        Returns
+        -------
+            numpy.ndarray or None
+                The boundary value if set, otherwise None.'''
+        valid_sides = {"bottom", "left", "top", "right"}
+
+        if side not in valid_sides:
+            raise ValueError(f"Invalid side '{side}'. Valid sides are: {', '.join(sorted(valid_sides))}.")
+
+        full_boundary = self.side_to_indices[side]
+        full_length = self.Lx if side in {"bottom", "top"} else self.Ly
+        n = len(full_boundary)
+
+        x = np.linspace(0, full_length, n)
+
+        mask = (x >= start) & (x <= end)
+
+        selected_indices = full_boundary[mask]
+
+        return np.array([self.u[i] for i in selected_indices])
+
+    def give_border_start_and_end(self, room) -> tuple:
+        my_start = my_end = None
+        for coupling in self.neighbors:
+            if coupling["neighbor"] == room:
+                my_start = coupling["start"]
+                my_end = coupling["end"]
+                break
+        if my_start is None or my_end is None:
+            raise ValueError("The specified room is not a neighbor.")
+        return my_start, my_end
+
+    def generate_boundary_masks(self):
+        for side in Room.walls_order.keys():
+            mask = np.zeros((self.Nx if side in {"bottom", "top"} else self.Ny,), dtype=bool)
+            for neighbor in self.neighbors:
+                if side != neighbor["side"]:
+                    continue
+                full_boundary = self.side_to_indices[side]
+                n = len(full_boundary)
+                full_length = self.Lx if side in {"bottom", "top"} else self.Ly
+                x = np.linspace(0, full_length, n)
+                mask |= (x >= neighbor["start"]) & (x <= neighbor["end"])
+            self.boundary_mask[side] = mask
+
+    def create_full_boundary_array(self, values, side, start, end):
+        full_boundary = self.side_to_indices[side]
+        full_length = self.Lx if side in {"bottom", "top"} else self.Ly
+        n = len(full_boundary)
+        x = np.linspace(0, full_length, n)
+        mask = [False if (x[i] < start) | (x[i] > end) else True for i in range(n)]
+        full_boundary_array = np.zeros(n)
+        
+
+        boundary_mask = self.boundary_mask[side]
+        j = 0
+        for i in range(n):
+            if mask[i]:
+                full_boundary_array[i] = values[j]
+                j += 1
+            elif not boundary_mask[i]:
+                full_boundary_array[i] = self.normal_wall_temp
+            elif self.D[Room.walls_order[side]] is not None:
+                full_boundary_array[i] = self.D[Room.walls_order[side]][i]
+        return full_boundary_array
+
+
+    def iterate_room(self):
+        '''Update the room's temperature distribution.'''
+        #Update boundary conditions from neighbors
+        for coupling in self.neighbors:
+            neighbor = coupling["neighbor"]
+            side = coupling["side"]
+            my_start = coupling["start"]
+            my_end = coupling["end"]
+            their_start, their_end = neighbor.give_border_start_and_end(self)
+
+
+
+            # Get the boundary values from the neighboring room
+            neighbor_values = neighbor.get_boundary_value(
+                Room.opposite_side(side), their_start, their_end
+            )
+
+            if neighbor_values is None:
+                continue  # Skip if no values are returned
+
+            #border_values = self.get_boundary_value(side, my_start, my_end)
+            # Update the Neumann BC for this side based on the neighbor's values
+            values = self.create_full_boundary_array(neighbor_values, side, my_start, my_end)
+            if coupling["type"] == "dirichlet":
+                self.D[Room.walls_order[side]] = values
+            else:
+                self.N[Room.walls_order[side]] = values
+
+        self.solver.updateBC(self.D, self.N, self.u)
+
+        self.new_u, _ = self.solver.solve()
+        self.u = self.relaxation * self.new_u + (1 - self.relaxation) * self.u
+
+if __name__ == "__main__":
+    four = False  
+    dx = 0.05
+
+    omega1 = Room("Omega 1", dx, (1.0, 1.0), heater_sides=["left"])
+    omega2 = Room("Omega 2", dx, (1.0, 2.0), heater_sides=["top"], window_sides=["bottom"])
+    omega3 = Room("Omega 3", dx, (1.0, 1.0), heater_sides=["right"])
+    omega4 = Room("Omega 4", dx, (0.5, 0.5), heater_sides=["bottom"]) if four else None
+
+    omega1.add_coupling({"neighbor": omega2, "side": "right", "start": 0.0, "end": 1.0, "type": "neumann"})
+    omega2.add_coupling({"neighbor": omega1, "side": "left", "start": 0.0, "end": 1.0, "type": "dirichlet"})
+    omega2.add_coupling({"neighbor": omega3, "side": "right", "start": 1.0, "end": 2.0, "type": "dirichlet"})
+    omega2.add_coupling({"neighbor": omega4, "side": "right", "start": 0.5, "end": 1.0, "type": "dirichlet"}) if four else None
+    omega3.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 1.0, "type": "neumann"})
+    omega3.add_coupling({"neighbor": omega4, "side": "bottom", "start": 0.0, "end": 0.5, "type": "dirichlet"}) if four else None
+    omega4.add_coupling({"neighbor": omega2, "side": "left", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+    omega4.add_coupling({"neighbor": omega3, "side": "top", "start": 0.0, "end": 0.5, "type": "neumann"}) if four else None
+
+    for _ in range(10):
+        omega2.iterate_room()
+        omega1.iterate_room()
+        omega3.iterate_room()
+        omega4.iterate_room() if four else None
+        
+
+    print("Room 1 Temperature Distribution:\n", omega1.u.reshape((omega1.Ny, omega1.Nx)))
+    print("Room 2 Temperature Distribution:\n", omega2.u.reshape((omega2.Ny, omega2.Nx)))
+    print("Room 3 Temperature Distribution:\n", omega3.u.reshape((omega3.Ny, omega3.Nx)))
+    print("Room 4 Temperature Distribution:\n", omega4.u.reshape((omega4.Ny, omega4.Nx))) if four else None
+
+    # plotting: compose a single image that places the rooms according to the apartment layout
+    import matplotlib.pyplot as plt
+    import numpy as _np
+
+    if four:
+        # follow the same composition logic as in geometry.py (alternative layout)
+        rooms = [omega1, omega2, omega3, omega4]
+        Nxs = [r.Nx for r in rooms]
+        Nys = [r.Ny for r in rooms]
+        # total image width: place omega1, omega2, omega3 horizontally (omega4 sits under omega3)
+        X = sum(Nxs[:-1])
+        Y = max(Nys)
+        array = _np.zeros((Y, X))
+        # Omega1 at left bottom
+        array[: Nys[0], : Nxs[0]] += omega1.u.reshape((Nys[0], Nxs[0]))
+        # Omega2 in center (spans full height)
+        array[:, Nxs[0] : Nxs[0] + Nxs[1]] += omega2.u.reshape((Nys[1], Nxs[1]))
+        # Omega3 at top-right
+        array[Y - Nys[2] :, Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[2]] += omega3.u.reshape((Nys[2], Nxs[2]))
+        # Omega4 below Omega3
+        array[Y - Nys[2] - Nys[3] : Y - Nys[2], Nxs[0] + Nxs[1] : Nxs[0] + Nxs[1] + Nxs[3]] += omega4.u.reshape((Nys[3], Nxs[3]))
+
+        plt.figure(figsize=(6, 6))
+        plt.imshow(array, aspect=1, origin='lower')
+        plt.title('Composite apartment temperature (4 rooms)')
+        plt.colorbar()
+        plt.show()
+    else:
+        # default 3-room layout (same composition as geometry.py default)
+        rooms = [omega1, omega2, omega3]
+        Nxs = [r.Nx for r in rooms]
+        Nys = [r.Ny for r in rooms]
+        X = sum(Nxs) - 2
+        Y = max(Nys)
+        array = _np.zeros((Y, X))
+        array[: Nys[0], : Nxs[0]] += omega1.u.reshape((Nys[0], Nxs[0]))
+        array[:, Nxs[0] - 1 : Nxs[0] + Nxs[1] - 1] += omega2.u.reshape((Nys[1], Nxs[1]))
+        array[Y - Nys[2] :, Nxs[0] - 2 + Nxs[1] : Nxs[0] - 2 + Nxs[1] + Nxs[2]] += omega3.u.reshape((Nys[2], Nxs[2]))
+        array[: Nys[0], Nxs[0] - 1] /= 2
+        array[Y - Nys[2] :, Nxs[0] + Nxs[1] - 2] /= 2
+
+        plt.figure(figsize=(6, 4))
+        plt.imshow(array, aspect=1, origin='lower', extent=[0, sum(r.Lx for r in rooms), 0, max(r.Ly for r in rooms)])
+        plt.title('Composite apartment temperature (3 rooms)')
+        plt.colorbar()
+        plt.show()import numpy as np
+import matplotlib.pyplot as plt
+from heatSolver import HeatSolver
+
+def run_verification_with_plot(dx=0.05, Lx=2.0, Ly=1.0):
+    Nx = int(Lx / dx) + 1
+    Ny = int(Ly / dx) + 1
+    x = np.linspace(0, Lx, Nx)
+    y = np.linspace(0, Ly, Ny)
+    X, Y = np.meshgrid(x, y, indexing='xy')
+
+    # --- Exact linear solution ---
+    a = 0.7
+    b = 1.3
+    c = -0.4
+    def u_exact_fn(x, y): return a + b*x + c*y
+
+    u_exact = u_exact_fn(X, Y)
+
+    # Dirichlet on left/right
+    dir_left  = u_exact_fn(0.0, y)
+    dir_right = u_exact_fn(Lx, y)
+
+    # Neumann on bottom/top (outward normal)
+    q_bottom = np.full(Nx, -c)
+    q_top    = np.full(Nx,  c)
+
+    dirichletBC = [None, dir_left, None, dir_right]
+    neumanBC = [q_bottom, None, q_top, None]
+
+    solver = HeatSolver(dx=dx, sides=[Lx, Ly],
+                        dirichletBC=dirichletBC,
+                        neumanBC=neumanBC)
+
+    u_num_flat, sides_data = solver.solve()
+    u_num = u_num_flat.reshape(Ny, Nx)
+
+    # --- Compute error ---
+    error = u_num - u_exact
+    max_err = np.abs(error).max()
+    mean_err = np.abs(error).mean()
+    print("LINEAR VERIFICATION TEST WITH PLOTS")
+    print(f"Max error  : {max_err:.3e}")
+    print(f"Mean error : {mean_err:.3e}")
+
+    # --- Plot numerical solution ---
+    fig, axs = plt.subplots(1, 3, figsize=(18,5))
+    cs1 = axs[0].contourf(X, Y, u_num, 20, cmap='viridis')
+    axs[0].set_title("Numerical solution")
+    fig.colorbar(cs1, ax=axs[0])
+
+    # Plot exact solution
+    cs2 = axs[1].contourf(X, Y, u_exact, 20, cmap='viridis')
+    axs[1].set_title("Exact solution")
+    fig.colorbar(cs2, ax=axs[1])
+
+    # Plot error
+    cs3 = axs[2].contourf(X, Y, error, 20, cmap='RdBu')
+    axs[2].set_title("Error (u_num - u_exact)")
+    fig.colorbar(cs3, ax=axs[2])
+
+    for ax in axs:
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_aspect('equal')
+
+    plt.tight_layout()
+    plt.show()
+
+    return solver, u_num, u_exact, error
+
+if __name__ == "__main__":
+    solver, u_num, u_exact, error = run_verification_with_plot(dx=0.05)

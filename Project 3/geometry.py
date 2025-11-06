@@ -75,6 +75,11 @@ class Apartment:
             omega4.add_coupling(coupling4_2)
             omega4.add_coupling(coupling4_3)
 
+            omega1.generate_boundary_information()
+            omega2.generate_boundary_information()  
+            omega3.generate_boundary_information()
+            omega4.generate_boundary_information()
+
             if args.verbose:
                 print(dim("Successfully coupled all rooms"))
             self.rooms = [omega1, omega2, omega3, omega4]

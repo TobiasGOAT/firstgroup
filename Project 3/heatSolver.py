@@ -164,7 +164,7 @@ class HeatSolver:
                 bd_idx, in_idx = self.range_map[side]
                 for bidx, iidx in zip(bd_idx, in_idx):
                     self._bd_to_inner[bidx] = iidx
-
+        
 
         #Neumann first (only if provided)
         if NBCList is not None:
@@ -175,9 +175,9 @@ class HeatSolver:
             # Explicitly set sign and formula per side
             # formula: u_bd = u_inner + sign * dx * g
             side_sign = {
-                "bottom": +1.0,  # u_bd = u_inner + dx * q_bottom
+                "bottom": -1.0,  # u_bd = u_inner + dx * q_bottom
                 "top":    -1.0,  # u_bd = u_inner - dx * q_top
-                "left":   +1.0,  # u_bd = u_inner + dx * q_left
+                "left":   -1.0,  # u_bd = u_inner + dx * q_left
                 "right":  -1.0   # u_bd = u_inner - dx * q_right
             }[sideName]
 
