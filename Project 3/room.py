@@ -385,7 +385,7 @@ class Room:
         self.generate_boundary_information()
 
 if __name__ == "__main__":
-    four = True
+    four = False
     decoupled = True
 
     omega1 = Room("Omega 1", 0.01, (1.0, 1.0), heater_sides=["left"])
